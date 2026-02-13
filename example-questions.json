@@ -1,0 +1,24 @@
+[
+  {
+    "Slug": "valid-anagram",
+    "Options": [
+      {
+        "Text": "Use a frequency map counting characters in s, decrement for t, check all zero — O(n) time, O(1) space (26 letters max)",
+        "Rating": "OPTIMAL"
+      },
+      {
+        "Text": "Sort both strings and compare — O(n log n) time, O(1) space",
+        "Rating": "PLAUSIBLE"
+      },
+      {
+        "Text": "Use two hash maps for character frequencies and compare — O(n) time, O(1) space",
+        "Rating": "PLAUSIBLE"
+      },
+      {
+        "Text": "Check every permutation of s to see if it matches t — O(n!) time, exponential and impractical",
+        "Rating": "WRONG"
+      }
+    ],
+    "Solution": "// Pattern: Hash Map Frequency Count\n// Time: O(n) | Space: O(1)\nfunc isAnagram(s, t string) bool {\n    if len(s) != len(t) { return false }\n    freq := [26]int{}\n    for i := 0; i < len(s); i++ {\n        freq[s[i]-'a']++\n        freq[t[i]-'a']--\n    }\n    for _, count := range freq {\n        if count != 0 { return false }\n    }\n    return true\n}"
+  }
+]
