@@ -12,3 +12,6 @@ warmup
 *.swp
 *.swo
 *~
+
+# Nix / direnv
+.direnv/
