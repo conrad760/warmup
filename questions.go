@@ -163,6 +163,7 @@ func threeSum(nums []int) [][]int {
 		Slug: "container-with-most-water",
 		Options: []Option{
 			{Text: "Two pointers starting at both ends, move the shorter side inward — O(n) time, O(1) space", Rating: Optimal},
+			{Text: "For each line, binary search for the best partner by height among lines farther than some distance — O(n log n) time, O(1) space", Rating: Plausible},
 			{Text: "Check every pair of lines and compute the area — O(n^2) time, O(1) space", Rating: Suboptimal},
 			{Text: "Use a stack to find next greater elements then compute areas — stack approach doesn't apply to this container geometry — O(n) time, O(n) space", Rating: Wrong},
 			{Text: "Sort lines by height and greedily pick tallest pairs — sorting loses position information needed for width — O(n log n) time, O(n) space", Rating: Wrong},
@@ -272,9 +273,9 @@ func minWindow(s string, t string) string {
 		Slug: "valid-parentheses",
 		Options: []Option{
 			{Text: "Use a stack: push opening brackets, pop and match for closing brackets — O(n) time, O(n) space", Rating: Optimal},
-			{Text: "Count opening and closing brackets of each type — counts match doesn't mean nesting is correct — O(n) time, O(1) space", Rating: Wrong},
+			{Text: "Use a stack but push the expected closing bracket for each opener, then check equality on pop — O(n) time, O(n) space", Rating: Plausible},
 			{Text: "Repeatedly remove adjacent matching pairs until string is empty or stuck — O(n^2) time, O(n) space", Rating: Suboptimal},
-			{Text: "Use three counters for each bracket type — fails on interleaved brackets like \"([)]\" — O(n) time, O(1) space", Rating: Wrong},
+			{Text: "Count opening and closing brackets of each type — counts match doesn't mean nesting is correct (e.g. \"][\") — O(n) time, O(1) space", Rating: Wrong},
 		},
 		Solution: `// Pattern: Stack
 // Time: O(n) | Space: O(n)
@@ -300,8 +301,8 @@ func isValid(s string) bool {
 		Options: []Option{
 			{Text: "Use two stacks: one for values and one tracking the current minimum at each level — O(1) per operation, O(n) space", Rating: Optimal},
 			{Text: "Store (value, currentMin) pairs in a single stack — O(1) per operation, O(n) space", Rating: Optimal},
+			{Text: "Use a stack plus a min-heap to track the current minimum — O(log n) push/pop due to heap operations, O(n) space", Rating: Plausible},
 			{Text: "Keep a single stack and scan for minimum on each getMin call — O(n) per getMin, O(n) space", Rating: Suboptimal},
-			{Text: "Use a sorted array alongside the stack — O(n) for push/pop due to maintaining sorted order, O(n) space", Rating: Suboptimal},
 			{Text: "Store only the minimum value in a variable — breaks when the minimum is popped and you need the next minimum — O(1) per operation, O(1) space", Rating: Wrong},
 		},
 		Solution: `// Pattern: Auxiliary Stack / Pair Stack
@@ -406,8 +407,8 @@ func search(nums []int, target int) int {
 		Slug: "find-minimum-in-rotated-sorted-array",
 		Options: []Option{
 			{Text: "Binary search comparing mid to right boundary to determine which half contains the minimum — O(log n) time, O(1) space", Rating: Optimal},
+			{Text: "Find the pivot point (where nums[i] > nums[i+1]) with binary search, minimum is at pivot+1 — O(log n) time, O(1) space", Rating: Plausible},
 			{Text: "Linear scan tracking the minimum — O(n) time, O(1) space", Rating: Suboptimal},
-			{Text: "Sort the array and return the first element — O(n log n) time, O(1) space", Rating: Suboptimal},
 			{Text: "Check only the first and last elements — the minimum is always at one end — this is false for rotated arrays — O(1) time, O(1) space", Rating: Wrong},
 		},
 		Solution: `// Pattern: Binary Search on Rotated Array
@@ -451,7 +452,7 @@ func reverseList(head *ListNode) *ListNode {
 			{Text: "Use a dummy head, iterate both lists comparing values, append smaller node — O(n+m) time, O(1) space", Rating: Optimal},
 			{Text: "Recursively merge: pick the smaller head, recurse on the rest — O(n+m) time, O(n+m) space (call stack)", Rating: Plausible},
 			{Text: "Collect all values into an array, sort, rebuild the list — O((n+m) log(n+m)) time, O(n+m) space", Rating: Suboptimal},
-			{Text: "Append list2 to the end of list1 then sort — appending is O(n), sorting a linked list is harder than merging — O((n+m) log(n+m)) time, O(1) space", Rating: Suboptimal},
+			{Text: "Interleave nodes alternately from list1 and list2 — alternating doesn't maintain sorted order — O(n+m) time, O(1) space", Rating: Wrong},
 		},
 		Solution: `// Pattern: Iterative Merge with Dummy Head
 // Time: O(n + m) | Space: O(1)
@@ -475,7 +476,7 @@ func mergeTwoLists(l1, l2 *ListNode) *ListNode {
 		Options: []Option{
 			{Text: "Floyd's cycle detection: slow pointer moves 1 step, fast pointer moves 2 steps, they meet if cycle exists — O(n) time, O(1) space", Rating: Optimal},
 			{Text: "Use a hash set to store visited nodes, check for revisits — O(n) time, O(n) space", Rating: Plausible},
-			{Text: "Mark visited nodes by modifying their value — destructive and assumes values can be changed — O(n) time, O(1) space", Rating: Wrong},
+			{Text: "Store each visited node address in a sorted list and binary search for duplicates — O(n log n) time, O(n) space", Rating: Suboptimal},
 			{Text: "Traverse the list and count nodes; if count exceeds a threshold assume cycle — unreliable heuristic with no guarantee — O(n) time, O(1) space", Rating: Wrong},
 		},
 		Solution: `// Pattern: Floyd's Tortoise and Hare
@@ -563,7 +564,7 @@ func levelOrder(root *TreeNode) [][]int {
 		Options: []Option{
 			{Text: "DFS/BFS from each unvisited land cell, mark connected land as visited — O(m*n) time, O(m*n) space", Rating: Optimal},
 			{Text: "Union-Find: union adjacent land cells, count distinct components — O(m*n * alpha(m*n)) time, O(m*n) space", Rating: Plausible},
-			{Text: "For each cell, BFS to check if it's part of a new island without marking visited — revisits cells leading to infinite loops — O(?) time", Rating: Wrong},
+			{Text: "For each land cell, run a full BFS to find its island, use a separate visited grid instead of modifying the input — O(m*n) time, O(m*n) space — correct but uses unnecessary extra storage", Rating: Suboptimal},
 			{Text: "Count all land cells and divide by average island size — no way to determine average island size without visiting all — O(m*n) time, O(1) space", Rating: Wrong},
 		},
 		Solution: `// Pattern: DFS Grid Traversal
@@ -761,8 +762,8 @@ func combinationSum(candidates []int, target int) [][]int {
 		Slug: "word-search",
 		Options: []Option{
 			{Text: "Backtracking DFS from each cell matching the first letter, mark visited cells and unmark on backtrack — O(m*n*4^L) time, O(L) space", Rating: Optimal},
-			{Text: "BFS from each matching start cell with visited tracking — BFS doesn't backtrack visited state properly for this problem — O(m*n*4^L) time, O(m*n) space", Rating: Wrong},
-			{Text: "Build a trie from the board paths, then search for the word — building all paths is exponential and impractical — O(4^(m*n)) time", Rating: Suboptimal},
+			{Text: "BFS from each matching start cell with per-path visited state — correct but harder to implement than DFS and uses more memory for visited tracking — O(m*n*4^L) time, O(m*n*L) space", Rating: Plausible},
+			{Text: "DFS from each cell without backtracking (permanently marking visited) — may block valid paths that reuse cells from a different starting direction — O(m*n) time, O(m*n) space", Rating: Suboptimal},
 			{Text: "Check if the board contains all characters in the word with correct frequencies — character existence doesn't imply a valid connected path — O(m*n) time, O(1) space", Rating: Wrong},
 		},
 		Solution: `// Pattern: Backtracking DFS on Grid
@@ -791,7 +792,8 @@ func exist(board [][]byte, word string) bool {
 		Slug: "jump-game",
 		Options: []Option{
 			{Text: "Greedy: track the farthest reachable index, iterate and update — O(n) time, O(1) space", Rating: Optimal},
-			{Text: "DP: dp[i] = whether index i is reachable, check all previous indices — O(n^2) time, O(n) space", Rating: Suboptimal},
+			{Text: "Greedy from the end: start at the last index, scan backward to see if any earlier index can reach it, shift target — O(n) time, O(1) space", Rating: Plausible},
+			{Text: "DP: dp[i] = whether index i is reachable, check all previous indices — O(n^2) time, O(n) space", Rating: Plausible},
 			{Text: "BFS treating each index as a node with edges to reachable indices — O(n^2) time, O(n) space", Rating: Suboptimal},
 			{Text: "Check if the array contains any zeros — arrays can have zeros and still be solvable if you can jump over them — O(n) time, O(1) space", Rating: Wrong},
 		},
@@ -809,7 +811,7 @@ func canJump(nums []int) bool {
 	{
 		Slug: "maximum-subarray",
 		Options: []Option{
-			{Text: "Kadane's algorithm: track current sum, reset to 0 when negative, track max seen — O(n) time, O(1) space", Rating: Optimal},
+			{Text: "Kadane's algorithm: track current sum, reset to current element when running sum is negative, track global max — O(n) time, O(1) space", Rating: Optimal},
 			{Text: "Divide and conquer: split array, find max in left, right, and crossing subarrays — O(n log n) time, O(log n) space", Rating: Plausible},
 			{Text: "Check all possible subarrays — O(n^2) time, O(1) space", Rating: Suboptimal},
 			{Text: "Sort the array and sum the largest elements — sorting destroys contiguity — O(n log n) time, O(1) space", Rating: Wrong},
@@ -855,9 +857,9 @@ func leastInterval(tasks []byte, n int) int {
 		Options: []Option{
 			{Text: "Hash map + doubly linked list: map gives O(1) lookup, list maintains access order for O(1) eviction — O(1) per operation, O(capacity) space", Rating: Optimal},
 			{Text: "Use an ordered map (e.g., LinkedHashMap) — if the language supports it — Go doesn't have one built in — O(1) per operation, O(capacity) space", Rating: Plausible},
-			{Text: "Hash map with timestamps, scan for oldest on eviction — O(n) eviction, O(capacity) space", Rating: Suboptimal},
-			{Text: "Use a single array with the map, shift elements on access — O(n) per access due to shifting, O(capacity) space", Rating: Suboptimal},
 			{Text: "Use a min-heap ordered by access time — O(log n) per operation instead of O(1) — O(capacity) space", Rating: Plausible},
+			{Text: "Hash map with timestamps, scan for oldest on eviction — O(n) eviction, O(capacity) space", Rating: Suboptimal},
+			{Text: "Use a hash map and evict a random key when full — doesn't track recency, so frequently used keys get evicted — O(1) per operation, O(capacity) space", Rating: Wrong},
 		},
 		Solution: `// Pattern: Hash Map + Doubly Linked List
 // Time: O(1) per get/put | Space: O(capacity)

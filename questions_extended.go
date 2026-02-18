@@ -207,8 +207,8 @@ func characterReplacement(s string, k int) int {
 		Slug: "koko-eating-bananas",
 		Options: []Option{
 			{Text: "Binary search on eating speed k from 1 to max(piles) — check if Koko can finish within h hours at speed mid — O(n log m) time, O(1) space", Rating: Optimal},
+			{Text: "Binary search but with a tighter upper bound of ceil(sum(piles)/h) — O(n log(sum/h)) time, O(1) space — correct but doesn't improve worst case meaningfully", Rating: Plausible},
 			{Text: "Linear search from speed 1 upward until Koko can finish in time — O(n * m) time, O(1) space", Rating: Suboptimal},
-			{Text: "Sort piles and use a greedy strategy based on pile sizes — sorting doesn't help determine the minimum speed — O(n log n) time, O(1) space", Rating: Wrong},
 			{Text: "Compute total bananas / h as the speed — ignores that each pile is eaten independently with ceiling division — O(n) time, O(1) space", Rating: Wrong},
 		},
 		Solution: `// Pattern: Binary Search on Answer
@@ -326,7 +326,7 @@ func reorderList(head *ListNode) {
 		Options: []Option{
 			{Text: "Two pointers: advance fast pointer n steps ahead, then move both until fast reaches end — O(n) time, O(1) space", Rating: Optimal},
 			{Text: "First pass to count length, second pass to remove at position length - n — O(n) time, O(1) space", Rating: Plausible},
-			{Text: "Store all nodes in an array, remove the target by index — O(n) time, O(n) space", Rating: Plausible},
+			{Text: "Store all nodes in an array, remove the target by index — O(n) time, O(n) space — wastes memory copying all nodes", Rating: Suboptimal},
 			{Text: "Use recursion and count positions on the way back up the call stack — O(n) time, O(n) space", Rating: Plausible},
 			{Text: "Remove the nth node from the start instead of the end — off by one in direction, removes wrong node — O(n) time, O(1) space", Rating: Wrong},
 		},
@@ -402,7 +402,7 @@ func mergeTwoLists(l1, l2 *ListNode) *ListNode {
 		Options: []Option{
 			{Text: "Fast and slow pointers: advance fast two steps and slow one step, use a prev pointer to delete the middle node when fast reaches the end — O(n) time, O(1) space", Rating: Optimal},
 			{Text: "Two-pass: first pass counts the length, second pass deletes the node at index n/2 — O(n) time, O(1) space", Rating: Plausible},
-			{Text: "Store all nodes in an array, remove the middle by index, rebuild links — O(n) time, O(n) space", Rating: Plausible},
+			{Text: "Store all nodes in an array, remove the middle by index, rebuild links — O(n) time, O(n) space — wastes memory copying all nodes", Rating: Suboptimal},
 			{Text: "Use recursion counting positions on the way back to find and skip the middle node — O(n) time, O(n) space", Rating: Plausible},
 			{Text: "Advance a single pointer by half the first node's value to find the middle — the node values have no relation to list length or position — O(1) time, O(1) space", Rating: Wrong},
 		},
@@ -588,8 +588,8 @@ func buildTree(preorder []int, inorder []int) *TreeNode {
 		Slug: "binary-tree-maximum-path-sum",
 		Options: []Option{
 			{Text: "DFS returning max single-path gain from each node, update global max with left + node + right at each step — O(n) time, O(h) space", Rating: Optimal},
+			{Text: "For each node, compute max downward path from it via separate DFS calls, then combine left + node + right — O(n^2) time from redundant traversals, O(h) space", Rating: Plausible},
 			{Text: "Enumerate all paths between every pair of nodes — O(n^2) time, O(n) space", Rating: Suboptimal},
-			{Text: "BFS level-by-level computing sums — BFS doesn't naturally compute paths from any node to any node — O(n) time, O(n) space", Rating: Wrong},
 			{Text: "Only consider root-to-leaf paths — misses paths that don't go through the root or don't end at leaves — O(n) time, O(h) space", Rating: Wrong},
 		},
 		Solution: `// Pattern: DFS with Global Max Update
@@ -716,9 +716,9 @@ func (h *MinHeap) Pop() interface{}    { old := *h; x := old[len(old)-1]; *h = o
 		Slug: "pacific-atlantic-water-flow",
 		Options: []Option{
 			{Text: "BFS/DFS from ocean borders inward: find cells reachable from Pacific and Atlantic separately, return the intersection — O(m*n) time, O(m*n) space", Rating: Optimal},
-			{Text: "DFS from each cell checking if it can reach both oceans — O((m*n)^2) time, O(m*n) space", Rating: Suboptimal},
+			{Text: "DFS from each cell with memoization caching which oceans each cell can reach — O(m*n) time, O(m*n) space — correct but more complex than border-inward approach", Rating: Plausible},
+			{Text: "DFS from each cell checking if it can reach both oceans without memoization — O((m*n)^2) time, O(m*n) space", Rating: Suboptimal},
 			{Text: "Only check cells on the border — misses interior cells that can flow to both oceans — O(m+n) time, O(m+n) space", Rating: Wrong},
-			{Text: "Union-Find grouping cells by water flow direction — flow is directional (downhill) so union-find doesn't capture reachability correctly — O(m*n) time, O(m*n) space", Rating: Wrong},
 		},
 		Solution: `// Pattern: Multi-Source BFS/DFS from Borders
 // Time: O(m * n) | Space: O(m * n)
@@ -768,6 +768,7 @@ func pacificAtlantic(heights [][]int) [][]int {
 		Options: []Option{
 			{Text: "Topological sort using Kahn's algorithm (BFS with in-degree tracking) — O(V+E) time, O(V+E) space", Rating: Optimal},
 			{Text: "DFS-based topological sort with three-state cycle detection, append to result in post-order — O(V+E) time, O(V+E) space", Rating: Optimal},
+			{Text: "Repeatedly scan for a node with in-degree 0, remove it and update neighbors, repeat — O(V*(V+E)) time, O(V+E) space — correct but re-scanning each time is wasteful vs a queue", Rating: Plausible},
 			{Text: "Try all permutations and check if each ordering is valid — O(V!) time, O(V) space", Rating: Suboptimal},
 			{Text: "Sort courses by number of prerequisites — courses with equal prerequisites can still have ordering constraints between them — O(V log V) time, O(V) space", Rating: Wrong},
 		},
@@ -844,7 +845,8 @@ func validTree(n int, edges [][]int) bool {
 		Options: []Option{
 			{Text: "Union-Find: union each edge, count distinct roots — O(V + E * alpha(V)) time, O(V) space", Rating: Optimal},
 			{Text: "BFS/DFS from each unvisited node, count the number of traversals — O(V+E) time, O(V+E) space", Rating: Optimal},
-			{Text: "Build adjacency list and count nodes with no edges plus connected groups — misses nodes connected transitively — O(V+E) time, O(V) space", Rating: Wrong},
+			{Text: "Floyd-Warshall to compute all-pairs reachability, then count groups of mutually reachable nodes — O(V^3) time, O(V^2) space — correct but massively overkill", Rating: Plausible},
+			{Text: "For each pair of nodes, run DFS to check connectivity, group into components — O(V^2 * (V+E)) time, O(V+E) space", Rating: Suboptimal},
 			{Text: "Count nodes with degree 0 and assume the rest form one component — multiple components can all have edges — O(V+E) time, O(V) space", Rating: Wrong},
 		},
 		Solution: `// Pattern: Union-Find
@@ -1207,7 +1209,7 @@ func insert(intervals [][]int, newInterval []int) [][]int {
 			{Text: "Sort by start time, iterate and merge overlapping intervals — O(n log n) time, O(n) space", Rating: Optimal},
 			{Text: "Use a timeline/sweep line approach marking starts and ends — O(n log n) time, O(n) space", Rating: Plausible},
 			{Text: "Compare every pair of intervals and merge if overlapping — O(n^2) time, O(n) space", Rating: Suboptimal},
-			{Text: "Sort by end time and merge — sorting by end time doesn't group overlapping intervals correctly — O(n log n) time, O(n) space", Rating: Wrong},
+			{Text: "Merge intervals in the order they appear without sorting — non-adjacent intervals may overlap while adjacent ones don't, so merging sequentially misses overlaps — O(n) time, O(n) space", Rating: Wrong},
 		},
 		Solution: `// Pattern: Sort + Linear Merge
 // Time: O(n log n) | Space: O(n)
@@ -1338,7 +1340,7 @@ func rotate(matrix [][]int) {
 		Slug: "spiral-matrix",
 		Options: []Option{
 			{Text: "Layer-by-layer traversal: shrink boundaries (top, bottom, left, right) after each direction — O(m*n) time, O(1) extra space", Rating: Optimal},
-			{Text: "Simulate with direction vectors and a visited matrix — O(m*n) time, O(m*n) space", Rating: Plausible},
+			{Text: "Simulate with direction vectors and a visited matrix — O(m*n) time, O(m*n) space — wastes memory when boundary tracking uses O(1)", Rating: Suboptimal},
 			{Text: "Recursively peel off the outer ring and process the inner matrix — O(m*n) time, O(min(m,n)) space", Rating: Plausible},
 			{Text: "Traverse row by row alternating direction — this gives a zigzag, not a spiral — O(m*n) time, O(1) space", Rating: Wrong},
 		},
@@ -1431,7 +1433,7 @@ func setZeroes(matrix [][]int) {
 		Options: []Option{
 			{Text: "Brian Kernighan's trick: n &= n-1 clears the lowest set bit, count iterations — O(k) time where k = number of set bits, O(1) space", Rating: Optimal},
 			{Text: "Check each of the 32 bits using right shift and bitwise AND — O(32) time, O(1) space", Rating: Plausible},
-			{Text: "Convert to binary string and count '1' characters — O(32) time, O(32) space", Rating: Plausible},
+			{Text: "Convert to binary string and count '1' characters — O(32) time, O(32) space — unnecessary string allocation for a bit problem", Rating: Suboptimal},
 			{Text: "Use modulo 2 and division by 2 in a loop — same as bit checking but less idiomatic — O(32) time, O(1) space", Rating: Plausible},
 			{Text: "Return the integer value itself — the value of a number is not its popcount — O(1) time, O(1) space", Rating: Wrong},
 		},
@@ -1470,7 +1472,7 @@ func countBits(n int) []int {
 		Options: []Option{
 			{Text: "Iterate 32 times: extract the last bit of n, shift result left and OR the bit — O(1) time, O(1) space", Rating: Optimal},
 			{Text: "Divide and conquer: swap halves, quarters, etc. using bitmasks — O(1) time, O(1) space", Rating: Plausible},
-			{Text: "Convert to binary string, reverse the string, convert back — O(32) time, O(32) space", Rating: Plausible},
+			{Text: "Convert to binary string, reverse the string, convert back — O(32) time, O(32) space — unnecessary string allocation for a bit problem", Rating: Suboptimal},
 			{Text: "XOR the number with 0xFFFFFFFF — this flips bits (NOT), not reverses them — O(1) time, O(1) space", Rating: Wrong},
 		},
 		Solution: `// Pattern: Bit-by-Bit Reversal
@@ -1489,7 +1491,7 @@ func reverseBits(num uint32) uint32 {
 		Options: []Option{
 			{Text: "XOR all indices 0..n with all array elements — duplicates cancel, leaving the missing number — O(n) time, O(1) space", Rating: Optimal},
 			{Text: "Gauss formula: compute n*(n+1)/2 minus the array sum — O(n) time, O(1) space", Rating: Optimal},
-			{Text: "Sort the array and find the first index where nums[i] != i — O(n log n) time, O(1) space", Rating: Plausible},
+			{Text: "Sort the array and find the first index where nums[i] != i — O(n log n) time, O(1) space — slower than needed and modifies input", Rating: Suboptimal},
 			{Text: "Use a hash set of all numbers, check which 0..n is missing — O(n) time, O(n) space", Rating: Plausible},
 			{Text: "Return n if the last element isn't n, else return 0 — the missing number could be any value in [0,n] — O(1) time, O(1) space", Rating: Wrong},
 		},

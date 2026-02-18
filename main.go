@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -176,6 +177,7 @@ type model struct {
 	submitResult   int    // current question's submit result (SubmitNone initially)
 	sessionReport  string // filled on quit, rendered after program exits
 	leetgoMessage  string // transient message shown when user tries unavailable action
+	categoryFilter string // active category filter (empty = all categories)
 }
 
 const defaultTimer = 300
@@ -662,7 +664,11 @@ func (m model) View() string {
 	var b strings.Builder
 	q := m.questions[m.currentIdx]
 
-	header := headerStyle.Render("DSA Warmup")
+	headerText := "DSA Warmup"
+	if m.categoryFilter != "" {
+		headerText = "DSA Warmup — " + m.categoryFilter
+	}
+	header := headerStyle.Render(headerText)
 	statStr := fmt.Sprintf("  #%d  ", m.stats.Total)
 	statStr += lipgloss.NewStyle().
 		Foreground(colorGreen).
@@ -1255,6 +1261,8 @@ func main() {
 		"Path to leetgo workspace directory (auto-detected if not set)",
 	)
 	showStats := flag.Bool("stats", false, "Show lifetime stats and exit")
+	categoryFilter := flag.String("category", "", "Focus on a specific category (case-insensitive partial match)")
+	listCategories := flag.Bool("categories", false, "List available categories and exit")
 	flag.Parse()
 
 	if _, err := exec.LookPath("leetgo"); err != nil {
@@ -1360,6 +1368,64 @@ func main() {
 		}
 	}
 
+	// Collect unique categories from loaded questions.
+	categorySet := make(map[string]int)
+	for _, q := range questions {
+		categorySet[q.Category]++
+	}
+	var categoryNames []string
+	for name := range categorySet {
+		categoryNames = append(categoryNames, name)
+	}
+	sort.Strings(categoryNames)
+
+	if *listCategories {
+		fmt.Println("Available categories:")
+		for _, name := range categoryNames {
+			fmt.Printf("  %-30s (%d problems)\n", name, categorySet[name])
+		}
+		return
+	}
+
+	// Filter by category if requested.
+	activeCategoryFilter := ""
+	if *categoryFilter != "" {
+		needle := strings.ToLower(*categoryFilter)
+		var matched []string
+		for _, name := range categoryNames {
+			if strings.ToLower(name) == needle {
+				matched = []string{name}
+				break
+			}
+			if strings.Contains(strings.ToLower(name), needle) {
+				matched = append(matched, name)
+			}
+		}
+		if len(matched) == 0 {
+			fmt.Fprintf(os.Stderr, "No category matching %q. Available categories:\n", *categoryFilter)
+			for _, name := range categoryNames {
+				fmt.Fprintf(os.Stderr, "  %-30s (%d problems)\n", name, categorySet[name])
+			}
+			os.Exit(1)
+		}
+		if len(matched) > 1 {
+			fmt.Fprintf(os.Stderr, "Ambiguous category %q matches multiple:\n", *categoryFilter)
+			for _, name := range matched {
+				fmt.Fprintf(os.Stderr, "  %-30s (%d problems)\n", name, categorySet[name])
+			}
+			os.Exit(1)
+		}
+		activeCategoryFilter = matched[0]
+		var filtered []Question
+		for _, q := range questions {
+			if q.Category == activeCategoryFilter {
+				filtered = append(filtered, q)
+			}
+		}
+		questions = filtered
+		fmt.Printf("Focused on %q: %d problems\n", activeCategoryFilter, len(questions))
+	}
+
 	reviewLog := LoadReviewLog()
 
 	if *showStats {
@@ -1369,30 +1435,40 @@ func main() {
 
 	now := time.Now()
 	dueCount := 0
-	for _, pr := range reviewLog.Reviews {
+	reviewedCount := 0
+	slugSet := make(map[string]bool, len(questions))
+	for _, q := range questions {
+		slugSet[q.LeetcodeSlug] = true
+	}
+	for slug, pr := range reviewLog.Reviews {
+		if !slugSet[slug] {
+			continue
+		}
+		reviewedCount++
 		if now.After(pr.NextReviewAt) {
 			dueCount++
 		}
 	}
-	newCount := len(questions) - len(reviewLog.Reviews)
+	newCount := len(questions) - reviewedCount
 
 	fmt.Printf("Loaded %d questions from leetgo database\n", len(questions))
-	fmt.Printf("Due: %d | New: %d | Reviewed: %d\n", dueCount, newCount, len(reviewLog.Reviews))
+	fmt.Printf("Due: %d | New: %d | Reviewed: %d\n", dueCount, newCount, reviewedCount)
 	if workdir != "" {
 		fmt.Printf("leetgo workspace: %s\n", workdir)
 	}
 	time.Sleep(1 * time.Second)
 
 	m := model{
-		questions:     questions,
-		selected:      -1,
-		timer:         defaultTimer,
-		width:         80,
-		height:        40,
-		leetgoWorkdir: workdir,
-		reviewLog:     reviewLog,
-		sessionSeen:   make(map[int]bool),
-		submitResult:  SubmitNone,
+		questions:      questions,
+		selected:       -1,
+		timer:          defaultTimer,
+		width:          80,
+		height:         40,
+		leetgoWorkdir:  workdir,
+		reviewLog:      reviewLog,
+		sessionSeen:    make(map[int]bool),
+		submitResult:   SubmitNone,
+		categoryFilter: activeCategoryFilter,
 	}
 	m.unseen = make([]int, len(m.questions))
 	for i := range m.questions {
