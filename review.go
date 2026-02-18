@@ -30,6 +30,7 @@ type ProblemReview struct {
 	TotalReviews  int       `json:"total_reviews"`
 	TotalOptimal  int       `json:"total_optimal"`  // times picked optimal approach
 	TotalAccepted int       `json:"total_accepted"` // times leetgo submit was accepted
+	CodingTimes   []int     `json:"coding_times"`   // last 10 leetgo coding durations in seconds (0 = didn't code)
 }
 
 const (
@@ -96,7 +97,7 @@ func (pr *ProblemReview) updateSM2(quality int) {
 }
 
 // RecordReview records a single review event for a problem.
-func (rl *ReviewLog) RecordReview(slug string, approach Rating, submitResult int) {
+func (rl *ReviewLog) RecordReview(slug string, approach Rating, submitResult int, codingTime int) {
 	pr, ok := rl.Reviews[slug]
 	if !ok {
 		pr = &ProblemReview{
@@ -123,6 +124,11 @@ func (rl *ReviewLog) RecordReview(slug string, approach Rating, submitResult int
 	pr.SubmitHist = append(pr.SubmitHist, submitResult)
 	if len(pr.SubmitHist) > 10 {
 		pr.SubmitHist = pr.SubmitHist[len(pr.SubmitHist)-10:]
+	}
+
+	pr.CodingTimes = append(pr.CodingTimes, codingTime)
+	if len(pr.CodingTimes) > 10 {
+		pr.CodingTimes = pr.CodingTimes[len(pr.CodingTimes)-10:]
 	}
 
 	quality := computeQuality(approach, submitResult)
@@ -250,6 +256,8 @@ func (rl *ReviewLog) SessionReport(sessionReviews []sessionEntry) string {
 	plausible := 0
 	submitted := 0
 	accepted := 0
+	coded := 0
+	totalCodingSecs := 0
 	for _, e := range sessionReviews {
 		if e.approach == Optimal {
 			optimal++
@@ -263,6 +271,10 @@ func (rl *ReviewLog) SessionReport(sessionReviews []sessionEntry) string {
 		if e.submitResult == SubmitAccepted {
 			accepted++
 		}
+		if e.codingTime > 0 {
+			coded++
+			totalCodingSecs += e.codingTime
+		}
 	}
 
 	b.WriteString(fmt.Sprintf("  Problems reviewed:  %d\n", total))
@@ -272,10 +284,16 @@ func (rl *ReviewLog) SessionReport(sessionReviews []sessionEntry) string {
 		b.WriteString(fmt.Sprintf("  Submitted:          %d\n", submitted))
 		b.WriteString(fmt.Sprintf("  Accepted:           %d/%d (%.0f%%)\n", accepted, submitted, pct(accepted, submitted)))
 	}
+	if coded > 0 {
+		avgSecs := totalCodingSecs / coded
+		b.WriteString(fmt.Sprintf("  Coded:              %d problems\n", coded))
+		b.WriteString(fmt.Sprintf("  Avg coding time:    %d:%02d\n", avgSecs/60, avgSecs%60))
+		b.WriteString(fmt.Sprintf("  Total coding time:  %d:%02d\n", totalCodingSecs/60, totalCodingSecs%60))
+	}
 	b.WriteString("\n")
 
-	b.WriteString("  Problem                                    Approach   Submit\n")
-	b.WriteString("  ───────────────────────────────────────────────────────────\n")
+	b.WriteString("  Problem                                    Approach   Submit     Time\n")
+	b.WriteString("  ────────────────────────────────────────────────────────────────────\n")
 	for _, e := range sessionReviews {
 		name := e.title
 		if len(name) > 40 {
@@ -291,7 +309,11 @@ func (rl *ReviewLog) SessionReport(sessionReviews []sessionEntry) string {
 		case SubmitError:
 			submitStr = "Error"
 		}
-		b.WriteString(fmt.Sprintf("  %-40s %-10s %s\n", name, approachStr, submitStr))
+		timeStr := "—"
+		if e.codingTime > 0 {
+			timeStr = fmt.Sprintf("%d:%02d", e.codingTime/60, e.codingTime%60)
+		}
+		b.WriteString(fmt.Sprintf("  %-40s %-10s %-10s %s\n", name, approachStr, submitStr, timeStr))
 	}
 
 	b.WriteString("\n")
@@ -458,6 +480,66 @@ func (rl *ReviewLog) LifetimeStats(questions []Question) string {
 		}
 	}
 
+	// Coding speed section — show problems with timing history
+	type codingEntry struct {
+		slug    string
+		times   []int // non-zero coding times
+		latest  int
+		fastest int
+		avg     int
+	}
+	var codingEntries []codingEntry
+	totalCodingSessions := 0
+	for _, pr := range rl.Reviews {
+		var nonZero []int
+		for _, t := range pr.CodingTimes {
+			if t > 0 {
+				nonZero = append(nonZero, t)
+			}
+		}
+		if len(nonZero) == 0 {
+			continue
+		}
+		totalCodingSessions += len(nonZero)
+		fastest := nonZero[0]
+		sum := 0
+		for _, t := range nonZero {
+			sum += t
+			if t < fastest {
+				fastest = t
+			}
+		}
+		codingEntries = append(codingEntries, codingEntry{
+			slug:    pr.Slug,
+			times:   nonZero,
+			latest:  nonZero[len(nonZero)-1],
+			fastest: fastest,
+			avg:     sum / len(nonZero),
+		})
+	}
+	if len(codingEntries) > 0 {
+		sort.Slice(codingEntries, func(i, j int) bool {
+			return codingEntries[i].slug < codingEntries[j].slug
+		})
+		b.WriteString("\n  Coding Speed (leetgo):\n")
+		b.WriteString(fmt.Sprintf("  Problems coded:     %d\n", len(codingEntries)))
+		b.WriteString(fmt.Sprintf("  Total sessions:     %d\n\n", totalCodingSessions))
+		b.WriteString("  Problem                          Latest   Best     Avg    Tries\n")
+		b.WriteString("  ──────────────────────────────────────────────────────────────\n")
+		for _, ce := range codingEntries {
+			name := ce.slug
+			if len(name) > 30 {
+				name = name[:27] + "..."
+			}
+			b.WriteString(fmt.Sprintf("  %-30s  %3d:%02d   %3d:%02d   %3d:%02d    %d\n",
+				name,
+				ce.latest/60, ce.latest%60,
+				ce.fastest/60, ce.fastest%60,
+				ce.avg/60, ce.avg%60,
+				len(ce.times)))
+		}
+	}
+
 	b.WriteString("\n═══════════════════════════════════════════\n")
 	return b.String()
 }
@@ -467,6 +549,7 @@ type sessionEntry struct {
 	slug         string
 	approach     Rating
 	submitResult int
+	codingTime   int // seconds spent coding in leetgo (0 = didn't code)
 }
 
 func pct(num, denom int) float64 {

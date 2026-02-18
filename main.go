@@ -154,13 +154,16 @@ type model struct {
 	showSolution   bool
 	timer          int
 	timerRunning   bool
-	leetgoWorkdir  string // leetgo workspace directory for "Try It"
-	triedIt        bool   // whether user has opened leetgo for current question
-	leetgoRunning  bool   // background test/submit in progress
-	leetgoOutput   string // captured stdout+stderr from last test/submit
-	leetgoSpinner  int    // spinner frame index
-	leetgoAction   string // "test" or "submit" — for status label
-	lastMaxScroll  int    // max scroll offset from last render
+	leetgoWorkdir  string    // leetgo workspace directory for "Try It"
+	triedIt        bool      // whether user has opened leetgo for current question
+	leetgoRunning  bool      // background test/submit in progress
+	leetgoOutput   string    // captured stdout+stderr from last test/submit
+	leetgoSpinner  int       // spinner frame index
+	leetgoAction   string    // "test" or "submit" — for status label
+	leetgoStarted  time.Time // wall-clock time when leetgo coding started
+	leetgoElapsed  int       // frozen elapsed seconds (set when timer stops)
+	leetgoTimerOn  bool      // whether the leetgo coding timer is running
+	lastMaxScroll  int       // max scroll offset from last render
 	timerExpired   bool
 	stats          Stats
 	width          int
@@ -176,6 +179,14 @@ type model struct {
 }
 
 const defaultTimer = 300
+
+// leetgoCodingSecs returns the total elapsed seconds on the leetgo coding timer.
+func (m model) leetgoCodingSecs() int {
+	if !m.leetgoTimerOn {
+		return m.leetgoElapsed
+	}
+	return m.leetgoElapsed + int(time.Since(m.leetgoStarted).Seconds())
+}
 
 func (m *model) pickQuestion() {
 	idx := -1
@@ -218,13 +229,18 @@ func (m *model) saveCurrentReview() {
 	q := m.questions[m.currentIdx]
 	approach := m.shuffledOpts[m.selected].Rating
 
-	m.reviewLog.RecordReview(q.LeetcodeSlug, approach, m.submitResult)
+	codingTime := 0
+	if m.triedIt {
+		codingTime = m.leetgoCodingSecs()
+	}
+	m.reviewLog.RecordReview(q.LeetcodeSlug, approach, m.submitResult, codingTime)
 
 	m.sessionEntries = append(m.sessionEntries, sessionEntry{
 		title:        q.Title,
 		slug:         q.LeetcodeSlug,
 		approach:     approach,
 		submitResult: m.submitResult,
+		codingTime:   codingTime,
 	})
 
 	_ = m.reviewLog.Save()
@@ -266,6 +282,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.leetgoAction == "submit" {
 			m.submitResult = ParseSubmitResult(m.leetgoOutput)
+			if m.submitResult == SubmitAccepted && m.leetgoTimerOn {
+				m.leetgoElapsed = m.leetgoCodingSecs()
+				m.leetgoTimerOn = false
+			}
 		}
 		return m, nil
 
@@ -340,6 +360,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "t":
 			if m.canTryIt() && !m.leetgoRunning {
+				if !m.triedIt {
+					m.leetgoElapsed = 0
+					m.leetgoStarted = time.Now()
+					m.leetgoTimerOn = true
+				}
 				m.triedIt = true
 				m.leetgoMessage = ""
 				return m, m.tryItCmd()
@@ -389,6 +414,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.pickQuestion()
 				m.timerRunning = true
 				m.triedIt = false
+				m.leetgoElapsed = 0
+				m.leetgoTimerOn = false
 				m.leetgoOutput = ""
 				m.leetgoAction = ""
 				m.leetgoMessage = ""
@@ -637,11 +664,17 @@ func (m model) View() string {
 
 	header := headerStyle.Render("DSA Warmup")
 	statStr := fmt.Sprintf("  #%d  ", m.stats.Total)
-	statStr += lipgloss.NewStyle().Foreground(colorGreen).Render(fmt.Sprintf("O:%d", m.stats.Optimal))
+	statStr += lipgloss.NewStyle().
+		Foreground(colorGreen).
+		Render(fmt.Sprintf("O:%d", m.stats.Optimal))
 	statStr += " "
-	statStr += lipgloss.NewStyle().Foreground(colorYellow).Render(fmt.Sprintf("P:%d", m.stats.Plausible))
+	statStr += lipgloss.NewStyle().
+		Foreground(colorYellow).
+		Render(fmt.Sprintf("P:%d", m.stats.Plausible))
 	statStr += " "
-	statStr += lipgloss.NewStyle().Foreground(colorOrange).Render(fmt.Sprintf("S:%d", m.stats.Suboptimal))
+	statStr += lipgloss.NewStyle().
+		Foreground(colorOrange).
+		Render(fmt.Sprintf("S:%d", m.stats.Suboptimal))
 	statStr += " "
 	statStr += lipgloss.NewStyle().Foreground(colorRed).Render(fmt.Sprintf("W:%d", m.stats.Wrong))
 	b.WriteString(header + statsStyle.Render(statStr))
@@ -686,7 +719,9 @@ func (m model) View() string {
 			if days >= 21 && reps >= 3 {
 				badges = lipgloss.NewStyle().Foreground(colorGreen).Render("★ mastered")
 			} else if reps > 0 {
-				badges = lipgloss.NewStyle().Foreground(colorYellow).Render(fmt.Sprintf("↻ %dd", int(days)))
+				badges = lipgloss.NewStyle().
+					Foreground(colorYellow).
+					Render(fmt.Sprintf("↻ %dd", int(days)))
 			} else {
 				badges = lipgloss.NewStyle().Foreground(colorOrange).Render("↻ learning")
 			}
@@ -709,7 +744,9 @@ func (m model) View() string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString(lipgloss.NewStyle().Foreground(colorWhite).Bold(true).Render("Choose an approach:"))
+	b.WriteString(
+		lipgloss.NewStyle().Foreground(colorWhite).Bold(true).Render("Choose an approach:"),
+	)
 	b.WriteString("\n")
 
 	letters := []string{"A", "B", "C", "D", "E", "F"}
@@ -722,7 +759,9 @@ func (m model) View() string {
 				if li == 0 {
 					if i == m.cursor {
 						prefix := lipgloss.NewStyle().Foreground(colorBlue).Bold(true).Render("> ")
-						b.WriteString(prefix + optionSelectedStyle.Render(fmt.Sprintf("%s) %s", letter, wl)))
+						b.WriteString(
+							prefix + optionSelectedStyle.Render(fmt.Sprintf("%s) %s", letter, wl)),
+						)
 					} else {
 						b.WriteString("  " + optionStyle.Render(fmt.Sprintf("%s) %s", letter, wl)))
 					}
@@ -805,6 +844,28 @@ func (m model) View() string {
 		b.WriteString("\n")
 	}
 
+	if m.triedIt {
+		lgElapsed := m.leetgoCodingSecs()
+		lgMins := lgElapsed / 60
+		lgSecs := lgElapsed % 60
+		lgTimeStr := fmt.Sprintf("%02d:%02d", lgMins, lgSecs)
+		var lgTimerLine string
+		if !m.leetgoTimerOn && lgElapsed > 0 {
+			// Timer stopped (accepted) — show final time in green
+			lgTimerLine = lipgloss.NewStyle().
+				Foreground(colorGreen).
+				Bold(true).
+				Render("Coding: " + lgTimeStr)
+		} else {
+			lgTimerLine = lipgloss.NewStyle().
+				Foreground(colorBlue).
+				Bold(true).
+				Render("Coding: " + lgTimeStr)
+		}
+		b.WriteString(lgTimerLine)
+		b.WriteString("\n")
+	}
+
 	if m.leetgoMessage != "" {
 		msgStyle := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -846,18 +907,34 @@ func (m model) View() string {
 
 	var helpParts []string
 	if m.selected == -1 {
-		helpParts = append(helpParts, "[Enter] Select", "[p] Pause", "[r] Reset", "[j/k] Scroll", "[q] Quit")
+		helpParts = append(
+			helpParts,
+			"[Enter] Select",
+			"[p] Pause",
+			"[r] Reset",
+			"[j/k] Scroll",
+			"[q] Quit",
+		)
 	} else {
 		noWorkRedStyle := lipgloss.NewStyle().Foreground(colorRed)
 		if m.canTryIt() && !m.triedIt {
 			helpParts = append(helpParts, "[t] Try It")
 		} else if m.wantsTryIt() && m.leetgoWorkdir == "" {
-			helpParts = append(helpParts, noWorkRedStyle.Render("[t] Try It"), noWorkRedStyle.Render("[T] Test"), noWorkRedStyle.Render("[S] Submit"))
+			helpParts = append(
+				helpParts,
+				noWorkRedStyle.Render("[t] Try It"),
+				noWorkRedStyle.Render("[T] Test"),
+				noWorkRedStyle.Render("[S] Submit"),
+			)
 		}
 		if m.triedIt {
 			if m.leetgoRunning {
 				dimStyle := lipgloss.NewStyle().Foreground(colorDim)
-				helpParts = append(helpParts, dimStyle.Render("[T] Test"), dimStyle.Render("[S] Submit"))
+				helpParts = append(
+					helpParts,
+					dimStyle.Render("[T] Test"),
+					dimStyle.Render("[S] Submit"),
+				)
 			} else {
 				helpParts = append(helpParts, "[t] Edit", "[T] Test", "[S] Submit")
 			}
@@ -911,7 +988,9 @@ func (m model) View() string {
 	}
 	indicatorStyle := lipgloss.NewStyle().Foreground(colorYellow).Bold(true)
 	if pct < 100 {
-		visible[len(visible)-1] = indicatorStyle.Render(fmt.Sprintf("  ▼ %d%% | j/k to scroll ▼", pct))
+		visible[len(visible)-1] = indicatorStyle.Render(
+			fmt.Sprintf("  ▼ %d%% | j/k to scroll ▼", pct),
+		)
 	} else {
 		visible[len(visible)-1] = indicatorStyle.Render("  ✓ End | k to scroll up")
 	}
@@ -1165,15 +1244,26 @@ func isKW(word string, list []string) bool {
 }
 
 func main() {
-	questionsFile := flag.String("questions", "", "Path to JSON file with additional curated questions (slug + approaches)")
-	workspace := flag.String("workspace", "", "Path to leetgo workspace directory (auto-detected if not set)")
+	questionsFile := flag.String(
+		"questions",
+		"",
+		"Path to JSON file with additional curated questions (slug + approaches)",
+	)
+	workspace := flag.String(
+		"workspace",
+		"",
+		"Path to leetgo workspace directory (auto-detected if not set)",
+	)
 	showStats := flag.Bool("stats", false, "Show lifetime stats and exit")
 	flag.Parse()
 
 	if _, err := exec.LookPath("leetgo"); err != nil {
 		fmt.Fprintln(os.Stderr, "leetgo is not installed.")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "This tool uses leetgo to fetch LeetCode problems and run test/submit.")
+		fmt.Fprintln(
+			os.Stderr,
+			"This tool uses leetgo to fetch LeetCode problems and run test/submit.",
+		)
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Setup:")
 		fmt.Fprintln(os.Stderr, "  1. Install leetgo:")
@@ -1208,7 +1298,10 @@ func main() {
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Question database not found.")
 			fmt.Fprintln(os.Stderr, "")
-			fmt.Fprintln(os.Stderr, "The leetgo question cache is needed to load problem descriptions.")
+			fmt.Fprintln(
+				os.Stderr,
+				"The leetgo question cache is needed to load problem descriptions.",
+			)
 			fmt.Fprintln(os.Stderr, "")
 			fmt.Fprintln(os.Stderr, "Setup:")
 			fmt.Fprintln(os.Stderr, "  1. Create a leetgo workspace (if you haven't already):")
@@ -1232,7 +1325,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "  To enable, either:")
 		fmt.Fprintln(os.Stderr, "    - Run from a directory containing leetgo.yaml")
 		fmt.Fprintln(os.Stderr, "    - Pass -workspace <path> to your leetgo workspace")
-		fmt.Fprintln(os.Stderr, "    - Create one: mkdir ~/leetcode && cd ~/leetcode && leetgo init")
+		fmt.Fprintln(
+			os.Stderr,
+			"    - Create one: mkdir ~/leetcode && cd ~/leetcode && leetgo init",
+		)
 		fmt.Fprintln(os.Stderr, "")
 	}
 

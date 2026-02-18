@@ -397,6 +397,31 @@ func mergeTwoLists(l1, l2 *ListNode) *ListNode {
 }`,
 	},
 
+	{
+		Slug: "delete-the-middle-node-of-a-linked-list",
+		Options: []Option{
+			{Text: "Fast and slow pointers: advance fast two steps and slow one step, use a prev pointer to delete the middle node when fast reaches the end — O(n) time, O(1) space", Rating: Optimal},
+			{Text: "Two-pass: first pass counts the length, second pass deletes the node at index n/2 — O(n) time, O(1) space", Rating: Plausible},
+			{Text: "Store all nodes in an array, remove the middle by index, rebuild links — O(n) time, O(n) space", Rating: Plausible},
+			{Text: "Use recursion counting positions on the way back to find and skip the middle node — O(n) time, O(n) space", Rating: Plausible},
+			{Text: "Advance a single pointer by half the first node's value to find the middle — the node values have no relation to list length or position — O(1) time, O(1) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Fast and Slow Pointers
+// Time: O(n) | Space: O(1)
+func deleteMiddle(head *ListNode) *ListNode {
+    if head.Next == nil {
+        return nil
+    }
+    slow, fast := head, head.Next.Next
+    for fast != nil && fast.Next != nil {
+        slow = slow.Next
+        fast = fast.Next.Next
+    }
+    slow.Next = slow.Next.Next
+    return head
+}`,
+	},
+
 	// Trees
 	{
 		Slug: "same-tree",
