@@ -149,10 +149,15 @@ func loadQuestions(dbPath string, curated []CuratedQuestion) ([]Question, error)
 
 		desc, example := parseContent(content)
 
+		cat := cq.Category
+		if cat == "" {
+			cat = parsePrimaryCategory(topicTags)
+		}
+
 		q := Question{
 			Title:        title,
 			Difficulty:   diff,
-			Category:     parsePrimaryCategory(topicTags),
+			Category:     cat,
 			Description:  desc,
 			Example:      example,
 			Options:      cq.Options,
@@ -277,6 +282,7 @@ func htmlToText(rawHTML string) string {
 }
 
 // parsePrimaryCategory extracts the first topic tag as the category.
+// This is used as a fallback when the curated question doesn't specify its own category.
 func parsePrimaryCategory(topicTagsJSON string) string {
 	var tags []TopicTag
 	if err := json.Unmarshal([]byte(topicTagsJSON), &tags); err != nil {

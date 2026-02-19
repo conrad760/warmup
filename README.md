@@ -141,14 +141,14 @@ The slug must match a problem in your leetgo database. Title, difficulty, descri
 - At least one option rated `OPTIMAL`
 - Rating values: `OPTIMAL`, `PLAUSIBLE`, `SUBOPTIMAL`, `WRONG`
 
-## Built-in Questions (83)
+## Built-in Questions (84)
 
 | Category | Count | Examples |
 |----------|-------|---------|
 | Arrays & Hashing | 8 | Two Sum, Group Anagrams, Product of Array Except Self, Longest Consecutive Sequence |
 | Two Pointers | 4 | Valid Palindrome, 3Sum, Container With Most Water, Two Sum II |
 | Sliding Window | 4 | Best Time to Buy/Sell Stock, Longest Substring No Repeat, Min Window Substring |
-| Stack | 3 | Valid Parentheses, Min Stack, Evaluate RPN |
+| Stack | 4 | Valid Parentheses, Min Stack, Evaluate RPN, Asteroid Collision |
 | Binary Search | 5 | Binary Search, Search Rotated Array, Koko Eating Bananas, Time Based Key-Value Store |
 | Linked List | 6 | Reverse Linked List, Merge Two Lists, Reorder List, Merge K Sorted Lists |
 | Trees | 11 | Invert Binary Tree, Validate BST, LCA of BST, Binary Tree Max Path Sum, Serialize/Deserialize |

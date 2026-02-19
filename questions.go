@@ -1,9 +1,11 @@
 package main
 
 // CuratedQuestion holds curated approach options and solution for a leetcode problem.
-// Title, Description, Example, Difficulty, Category are all loaded from leetgo's database.
+// Title, Description, Example, Difficulty are loaded from leetgo's database.
+// Category overrides the database's topic tags when set.
 type CuratedQuestion struct {
 	Slug     string
+	Category string // When set, overrides the category derived from leetgo's topic tags.
 	Options  []Option
 	Solution string
 }
@@ -12,7 +14,8 @@ type CuratedQuestion struct {
 var curatedBank = []CuratedQuestion{
 	// Arrays & Hashing
 	{
-		Slug: "two-sum",
+		Slug:     "two-sum",
+		Category: "Arrays & Hashing",
 		Options: []Option{
 			{Text: "Use a hash map to store each number's complement as you iterate — O(n) time, O(n) space", Rating: Optimal},
 			{Text: "Sort the array then use two pointers — O(n log n) time, O(1) space", Rating: Plausible},
@@ -35,7 +38,8 @@ func twoSum(nums []int, target int) []int {
 }`,
 	},
 	{
-		Slug: "group-anagrams",
+		Slug:     "group-anagrams",
+		Category: "Arrays & Hashing",
 		Options: []Option{
 			{Text: "Sort each string's characters and use the sorted version as a hash map key — O(n * k log k) time, O(n * k) space", Rating: Optimal},
 			{Text: "Use a character frequency count array as the hash key for each string — O(n * k) time, O(n * k) space", Rating: Optimal},
@@ -67,7 +71,8 @@ func sortString(s string) string {
 }`,
 	},
 	{
-		Slug: "top-k-frequent-elements",
+		Slug:     "top-k-frequent-elements",
+		Category: "Arrays & Hashing",
 		Options: []Option{
 			{Text: "Count frequencies with a hash map, then use bucket sort where index = frequency — O(n) time, O(n) space", Rating: Optimal},
 			{Text: "Count frequencies then use a min-heap of size k — O(n log k) time, O(n) space", Rating: Plausible},
@@ -96,7 +101,8 @@ func topKFrequent(nums []int, k int) []int {
 
 	// Two Pointers
 	{
-		Slug: "valid-palindrome",
+		Slug:     "valid-palindrome",
+		Category: "Two Pointers",
 		Options: []Option{
 			{Text: "Use two pointers from both ends, skip non-alphanumeric, compare lowercase — O(n) time, O(1) space", Rating: Optimal},
 			{Text: "Filter the string to keep only alphanumeric chars, lowercase it, then reverse and compare — O(n) time, O(n) space", Rating: Plausible},
@@ -124,7 +130,8 @@ func isPalindrome(s string) bool {
 }`,
 	},
 	{
-		Slug: "3sum",
+		Slug:     "3sum",
+		Category: "Two Pointers",
 		Options: []Option{
 			{Text: "Sort the array, fix one element, use two pointers for the remaining pair, skip duplicates — O(n^2) time, O(1) space", Rating: Optimal},
 			{Text: "Use three nested loops and a set to deduplicate results — O(n^3) time, O(n) space", Rating: Suboptimal},
@@ -160,7 +167,8 @@ func threeSum(nums []int) [][]int {
 }`,
 	},
 	{
-		Slug: "container-with-most-water",
+		Slug:     "container-with-most-water",
+		Category: "Two Pointers",
 		Options: []Option{
 			{Text: "Two pointers starting at both ends, move the shorter side inward — O(n) time, O(1) space", Rating: Optimal},
 			{Text: "For each line, binary search for the best partner by height among lines farther than some distance — O(n log n) time, O(1) space", Rating: Plausible},
@@ -189,7 +197,8 @@ func maxArea(height []int) int {
 
 	// Sliding Window
 	{
-		Slug: "best-time-to-buy-and-sell-stock",
+		Slug:     "best-time-to-buy-and-sell-stock",
+		Category: "Sliding Window",
 		Options: []Option{
 			{Text: "Track the minimum price seen so far and compute max profit at each step — O(n) time, O(1) space", Rating: Optimal},
 			{Text: "Check every buy-sell pair — O(n^2) time, O(1) space", Rating: Suboptimal},
@@ -209,7 +218,8 @@ func maxProfit(prices []int) int {
 }`,
 	},
 	{
-		Slug: "longest-substring-without-repeating-characters",
+		Slug:     "longest-substring-without-repeating-characters",
+		Category: "Sliding Window",
 		Options: []Option{
 			{Text: "Sliding window with a hash map storing each character's latest index — O(n) time, O(min(n,m)) space where m is charset size", Rating: Optimal},
 			{Text: "Check every possible substring for uniqueness — O(n^3) time, O(min(n,m)) space", Rating: Suboptimal},
@@ -232,7 +242,8 @@ func lengthOfLongestSubstring(s string) int {
 }`,
 	},
 	{
-		Slug: "minimum-window-substring",
+		Slug:     "minimum-window-substring",
+		Category: "Sliding Window",
 		Options: []Option{
 			{Text: "Sliding window with two frequency maps, expand right until valid then shrink left — O(n + m) time, O(m) space", Rating: Optimal},
 			{Text: "Check every substring of s to see if it contains all of t — O(n^2 * m) time, O(m) space", Rating: Suboptimal},
@@ -270,7 +281,8 @@ func minWindow(s string, t string) string {
 
 	// Stack
 	{
-		Slug: "valid-parentheses",
+		Slug:     "valid-parentheses",
+		Category: "Stack",
 		Options: []Option{
 			{Text: "Use a stack: push opening brackets, pop and match for closing brackets — O(n) time, O(n) space", Rating: Optimal},
 			{Text: "Use a stack but push the expected closing bracket for each opener, then check equality on pop — O(n) time, O(n) space", Rating: Plausible},
@@ -297,7 +309,8 @@ func isValid(s string) bool {
 }`,
 	},
 	{
-		Slug: "min-stack",
+		Slug:     "min-stack",
+		Category: "Stack",
 		Options: []Option{
 			{Text: "Use two stacks: one for values and one tracking the current minimum at each level — O(1) per operation, O(n) space", Rating: Optimal},
 			{Text: "Store (value, currentMin) pairs in a single stack — O(1) per operation, O(n) space", Rating: Optimal},
@@ -324,7 +337,8 @@ func (s *MinStack) Top() int    { return s.stack[len(s.stack)-1].val }
 func (s *MinStack) GetMin() int { return s.stack[len(s.stack)-1].minVal }`,
 	},
 	{
-		Slug: "evaluate-reverse-polish-notation",
+		Slug:     "evaluate-reverse-polish-notation",
+		Category: "Stack",
 		Options: []Option{
 			{Text: "Use a stack: push numbers, pop two operands when hitting an operator, push result — O(n) time, O(n) space", Rating: Optimal},
 			{Text: "Convert RPN to infix expression then evaluate — unnecessarily complex, still O(n) time, O(n) space", Rating: Plausible},
@@ -359,7 +373,8 @@ func evalRPN(tokens []string) int {
 
 	// Binary Search
 	{
-		Slug: "binary-search",
+		Slug:     "binary-search",
+		Category: "Binary Search",
 		Options: []Option{
 			{Text: "Classic binary search: compare middle element, narrow to left or right half — O(log n) time, O(1) space", Rating: Optimal},
 			{Text: "Linear scan through the array — O(n) time, O(1) space", Rating: Suboptimal},
@@ -380,7 +395,8 @@ func search(nums []int, target int) int {
 }`,
 	},
 	{
-		Slug: "search-in-rotated-sorted-array",
+		Slug:     "search-in-rotated-sorted-array",
+		Category: "Binary Search",
 		Options: []Option{
 			{Text: "Modified binary search: determine which half is sorted, then check if target lies in that half — O(log n) time, O(1) space", Rating: Optimal},
 			{Text: "Find the pivot with binary search, then binary search the correct half — O(log n) time, O(1) space", Rating: Plausible},
@@ -404,7 +420,8 @@ func search(nums []int, target int) int {
 }`,
 	},
 	{
-		Slug: "find-minimum-in-rotated-sorted-array",
+		Slug:     "find-minimum-in-rotated-sorted-array",
+		Category: "Binary Search",
 		Options: []Option{
 			{Text: "Binary search comparing mid to right boundary to determine which half contains the minimum — O(log n) time, O(1) space", Rating: Optimal},
 			{Text: "Find the pivot point (where nums[i] > nums[i+1]) with binary search, minimum is at pivot+1 — O(log n) time, O(1) space", Rating: Plausible},
@@ -425,7 +442,8 @@ func findMin(nums []int) int {
 
 	// Linked List
 	{
-		Slug: "reverse-linked-list",
+		Slug:     "reverse-linked-list",
+		Category: "Linked List",
 		Options: []Option{
 			{Text: "Iteratively reverse pointers using prev/curr/next variables — O(n) time, O(1) space", Rating: Optimal},
 			{Text: "Recursively reverse: each call returns the new tail and rewires pointers — O(n) time, O(n) space (call stack)", Rating: Plausible},
@@ -447,7 +465,8 @@ func reverseList(head *ListNode) *ListNode {
 }`,
 	},
 	{
-		Slug: "merge-two-sorted-lists",
+		Slug:     "merge-two-sorted-lists",
+		Category: "Linked List",
 		Options: []Option{
 			{Text: "Use a dummy head, iterate both lists comparing values, append smaller node — O(n+m) time, O(1) space", Rating: Optimal},
 			{Text: "Recursively merge: pick the smaller head, recurse on the rest — O(n+m) time, O(n+m) space (call stack)", Rating: Plausible},
@@ -472,7 +491,8 @@ func mergeTwoLists(l1, l2 *ListNode) *ListNode {
 }`,
 	},
 	{
-		Slug: "linked-list-cycle",
+		Slug:     "linked-list-cycle",
+		Category: "Linked List",
 		Options: []Option{
 			{Text: "Floyd's cycle detection: slow pointer moves 1 step, fast pointer moves 2 steps, they meet if cycle exists — O(n) time, O(1) space", Rating: Optimal},
 			{Text: "Use a hash set to store visited nodes, check for revisits — O(n) time, O(n) space", Rating: Plausible},
@@ -494,7 +514,8 @@ func hasCycle(head *ListNode) bool {
 
 	// Trees
 	{
-		Slug: "invert-binary-tree",
+		Slug:     "invert-binary-tree",
+		Category: "Trees",
 		Options: []Option{
 			{Text: "Recursive DFS: swap left and right children at each node, recurse on both — O(n) time, O(h) space", Rating: Optimal},
 			{Text: "Iterative BFS with a queue: swap children level by level — O(n) time, O(n) space", Rating: Plausible},
@@ -512,7 +533,8 @@ func invertTree(root *TreeNode) *TreeNode {
 }`,
 	},
 	{
-		Slug: "maximum-depth-of-binary-tree",
+		Slug:     "maximum-depth-of-binary-tree",
+		Category: "Trees",
 		Options: []Option{
 			{Text: "Recursive DFS: return 1 + max(depth(left), depth(right)) — O(n) time, O(h) space", Rating: Optimal},
 			{Text: "Iterative BFS counting levels — O(n) time, O(n) space", Rating: Plausible},
@@ -530,7 +552,8 @@ func maxDepth(root *TreeNode) int {
 }`,
 	},
 	{
-		Slug: "binary-tree-level-order-traversal",
+		Slug:     "binary-tree-level-order-traversal",
+		Category: "Trees",
 		Options: []Option{
 			{Text: "BFS with a queue, processing one level at a time by tracking queue size — O(n) time, O(n) space", Rating: Optimal},
 			{Text: "DFS with a depth parameter, appending to the correct level's slice — O(n) time, O(n) space", Rating: Plausible},
@@ -560,7 +583,8 @@ func levelOrder(root *TreeNode) [][]int {
 
 	// Graphs
 	{
-		Slug: "number-of-islands",
+		Slug:     "number-of-islands",
+		Category: "Graphs",
 		Options: []Option{
 			{Text: "DFS/BFS from each unvisited land cell, mark connected land as visited — O(m*n) time, O(m*n) space", Rating: Optimal},
 			{Text: "Union-Find: union adjacent land cells, count distinct components — O(m*n * alpha(m*n)) time, O(m*n) space", Rating: Plausible},
@@ -587,7 +611,8 @@ func numIslands(grid [][]byte) int {
 }`,
 	},
 	{
-		Slug: "clone-graph",
+		Slug:     "clone-graph",
+		Category: "Graphs",
 		Options: []Option{
 			{Text: "BFS/DFS with a hash map mapping original node to its clone — O(V+E) time, O(V) space", Rating: Optimal},
 			{Text: "Serialize the graph to a string then deserialize into new nodes — O(V+E) time, O(V+E) space", Rating: Plausible},
@@ -613,7 +638,8 @@ func cloneGraph(node *Node) *Node {
 }`,
 	},
 	{
-		Slug: "course-schedule",
+		Slug:     "course-schedule",
+		Category: "Graphs",
 		Options: []Option{
 			{Text: "Topological sort using DFS with three states (unvisited, visiting, visited) to detect cycles — O(V+E) time, O(V+E) space", Rating: Optimal},
 			{Text: "Kahn's algorithm: BFS with in-degree tracking, if all nodes processed then no cycle — O(V+E) time, O(V+E) space", Rating: Optimal},
@@ -642,7 +668,8 @@ func canFinish(numCourses int, prerequisites [][]int) bool {
 
 	// Dynamic Programming
 	{
-		Slug: "climbing-stairs",
+		Slug:     "climbing-stairs",
+		Category: "Dynamic Programming",
 		Options: []Option{
 			{Text: "Bottom-up DP using two variables (Fibonacci-like): dp[i] = dp[i-1] + dp[i-2] — O(n) time, O(1) space", Rating: Optimal},
 			{Text: "Top-down recursion with memoization — O(n) time, O(n) space", Rating: Plausible},
@@ -660,7 +687,8 @@ func climbStairs(n int) int {
 }`,
 	},
 	{
-		Slug: "house-robber",
+		Slug:     "house-robber",
+		Category: "Dynamic Programming",
 		Options: []Option{
 			{Text: "Bottom-up DP: at each house choose max(rob current + dp[i-2], skip and take dp[i-1]), track with two variables — O(n) time, O(1) space", Rating: Optimal},
 			{Text: "Top-down recursion with memoization: for each house decide rob or skip — O(n) time, O(n) space", Rating: Plausible},
@@ -678,7 +706,8 @@ func rob(nums []int) int {
 }`,
 	},
 	{
-		Slug: "longest-increasing-subsequence",
+		Slug:     "longest-increasing-subsequence",
+		Category: "Dynamic Programming",
 		Options: []Option{
 			{Text: "Patience sorting: maintain tails array, use binary search to place each element — O(n log n) time, O(n) space", Rating: Optimal},
 			{Text: "DP where dp[i] = length of LIS ending at index i, check all previous elements — O(n^2) time, O(n) space", Rating: Plausible},
@@ -704,7 +733,8 @@ func lengthOfLIS(nums []int) int {
 
 	// Backtracking
 	{
-		Slug: "subsets",
+		Slug:     "subsets",
+		Category: "Backtracking",
 		Options: []Option{
 			{Text: "Backtracking: at each index decide to include or exclude the element, recurse forward — O(n * 2^n) time, O(n) space", Rating: Optimal},
 			{Text: "Iterative: start with [[]], for each number add it to copies of all existing subsets — O(n * 2^n) time, O(n * 2^n) space", Rating: Plausible},
@@ -730,7 +760,8 @@ func subsets(nums []int) [][]int {
 }`,
 	},
 	{
-		Slug: "combination-sum",
+		Slug:     "combination-sum",
+		Category: "Backtracking",
 		Options: []Option{
 			{Text: "Backtracking with start index to avoid duplicates, reuse candidates by not advancing index — O(n^(T/M)) time, O(T/M) space where T=target, M=min candidate", Rating: Optimal},
 			{Text: "DP building up all combinations for each sum from 1 to target — O(n * T^2) time, O(T^2) space", Rating: Plausible},
@@ -759,7 +790,8 @@ func combinationSum(candidates []int, target int) [][]int {
 }`,
 	},
 	{
-		Slug: "word-search",
+		Slug:     "word-search",
+		Category: "Backtracking",
 		Options: []Option{
 			{Text: "Backtracking DFS from each cell matching the first letter, mark visited cells and unmark on backtrack — O(m*n*4^L) time, O(L) space", Rating: Optimal},
 			{Text: "BFS from each matching start cell with per-path visited state — correct but harder to implement than DFS and uses more memory for visited tracking — O(m*n*4^L) time, O(m*n*L) space", Rating: Plausible},
@@ -789,7 +821,8 @@ func exist(board [][]byte, word string) bool {
 
 	// Greedy
 	{
-		Slug: "jump-game",
+		Slug:     "jump-game",
+		Category: "Greedy",
 		Options: []Option{
 			{Text: "Greedy: track the farthest reachable index, iterate and update — O(n) time, O(1) space", Rating: Optimal},
 			{Text: "Greedy from the end: start at the last index, scan backward to see if any earlier index can reach it, shift target — O(n) time, O(1) space", Rating: Plausible},
@@ -809,7 +842,8 @@ func canJump(nums []int) bool {
 }`,
 	},
 	{
-		Slug: "maximum-subarray",
+		Slug:     "maximum-subarray",
+		Category: "Greedy",
 		Options: []Option{
 			{Text: "Kadane's algorithm: track current sum, reset to current element when running sum is negative, track global max — O(n) time, O(1) space", Rating: Optimal},
 			{Text: "Divide and conquer: split array, find max in left, right, and crossing subarrays — O(n log n) time, O(log n) space", Rating: Plausible},
@@ -829,7 +863,8 @@ func maxSubArray(nums []int) int {
 }`,
 	},
 	{
-		Slug: "task-scheduler",
+		Slug:     "task-scheduler",
+		Category: "Greedy",
 		Options: []Option{
 			{Text: "Greedy math: compute (maxFreq - 1) * (n + 1) + countOfMaxFreq, take max with total tasks — O(n) time, O(1) space", Rating: Optimal},
 			{Text: "Use a max-heap to always schedule the most frequent available task, with a cooldown queue — O(n * m) time, O(m) space", Rating: Plausible},
@@ -853,7 +888,8 @@ func leastInterval(tasks []byte, n int) int {
 
 	// Design
 	{
-		Slug: "lru-cache",
+		Slug:     "lru-cache",
+		Category: "Design",
 		Options: []Option{
 			{Text: "Hash map + doubly linked list: map gives O(1) lookup, list maintains access order for O(1) eviction — O(1) per operation, O(capacity) space", Rating: Optimal},
 			{Text: "Use an ordered map (e.g., LinkedHashMap) — if the language supports it — Go doesn't have one built in — O(1) per operation, O(capacity) space", Rating: Plausible},
@@ -892,7 +928,8 @@ func (c *LRUCache) remove(n *node)      { n.prev.next = n.next; n.next.prev = n.
 func (c *LRUCache) insertFront(n *node)  { n.next = c.head.next; n.prev = c.head; c.head.next.prev = n; c.head.next = n }`,
 	},
 	{
-		Slug: "implement-trie-prefix-tree",
+		Slug:     "implement-trie-prefix-tree",
+		Category: "Design",
 		Options: []Option{
 			{Text: "Trie with nodes containing a children array and an end-of-word flag — O(L) per operation, O(N*L) space where N=words, L=avg length", Rating: Optimal},
 			{Text: "Store words in a hash set, iterate all for prefix check — O(1) search, O(N*L) startsWith — O(N*L) space", Rating: Suboptimal},
@@ -928,7 +965,8 @@ func (t *Trie) find(s string) *Trie {
 }`,
 	},
 	{
-		Slug: "design-twitter",
+		Slug:     "design-twitter",
+		Category: "Design",
 		Options: []Option{
 			{Text: "Hash maps for followers and tweet lists, merge k sorted lists with a min-heap for feed — O(k log k) for feed where k = followees, O(N) space", Rating: Optimal},
 			{Text: "Store all tweets in one list, filter by user's follow set on feed request — O(T) per feed where T = total tweets, O(T) space", Rating: Suboptimal},
