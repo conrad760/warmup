@@ -298,7 +298,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.saveCurrentReview()
 			}
 			if m.reviewLog != nil {
-				m.sessionReport = m.reviewLog.SessionReport(m.sessionEntries)
+				m.sessionReport = m.reviewLog.SessionReport(m.sessionEntries, len(m.questions))
 			}
 			return m, tea.Quit
 
@@ -537,19 +537,21 @@ var (
 				Bold(true).
 				Foreground(colorRed)
 
+	colorSoftWhite = lipgloss.Color("#d4d4d8")
+	colorMidGrey   = lipgloss.Color("#a1a1aa")
+
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(colorWhite)
+			Foreground(colorMidGrey)
 
 	descStyle = lipgloss.NewStyle().
-			Foreground(colorDim)
+			Foreground(colorSoftWhite)
 
 	exampleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#a1a1aa")).
-			PaddingLeft(2).
-			BorderLeft(true).
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderForeground(colorPurple)
+			Foreground(colorSoftWhite).
+			Padding(0, 1).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorDim)
 
 	optionStyle = lipgloss.NewStyle().
 			Foreground(colorWhite)
@@ -746,7 +748,11 @@ func (m model) View() string {
 	b.WriteString("\n")
 
 	if q.Example != "" {
-		b.WriteString(exampleStyle.Render(wrapText(q.Example, textW-4)))
+		exLabel := lipgloss.NewStyle().Bold(true).Foreground(colorDim).Render("Example")
+		wrapped := wrapLines(q.Example, textW-6)
+		exBody := formatExample(wrapped, textW-6)
+		b.WriteString(exLabel + "\n")
+		b.WriteString(exampleStyle.Render(exBody))
 		b.WriteString("\n")
 	}
 
@@ -1095,6 +1101,33 @@ var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
 func stripANSI(s string) string {
 	return ansiRe.ReplaceAllString(s, "")
+}
+
+// formatExample styles example text to look like LeetCode's format.
+// It highlights Input:, Output:, and Explanation: labels.
+func formatExample(text string, maxWidth int) string {
+	labelStyle := lipgloss.NewStyle().Bold(true).Foreground(colorWhite)
+	valStyle := lipgloss.NewStyle().Foreground(colorSoftWhite)
+
+	lines := strings.Split(text, "\n")
+	var out []string
+	for _, line := range lines {
+		styled := false
+		for _, label := range []string{"Input:", "Output:", "Explanation:"} {
+			idx := strings.Index(line, label)
+			if idx >= 0 {
+				prefix := line[:idx]
+				rest := line[idx+len(label):]
+				out = append(out, prefix+labelStyle.Render(label)+valStyle.Render(rest))
+				styled = true
+				break
+			}
+		}
+		if !styled {
+			out = append(out, valStyle.Render(line))
+		}
+	}
+	return strings.Join(out, "\n")
 }
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}

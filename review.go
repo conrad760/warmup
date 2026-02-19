@@ -240,7 +240,7 @@ func ParseSubmitResult(output string) int {
 }
 
 // SessionReport generates an end-of-session summary string.
-func (rl *ReviewLog) SessionReport(sessionReviews []sessionEntry) string {
+func (rl *ReviewLog) SessionReport(sessionReviews []sessionEntry, totalQuestions int) string {
 	if len(sessionReviews) == 0 {
 		return "No problems reviewed this session."
 	}
@@ -332,11 +332,14 @@ func (rl *ReviewLog) SessionReport(sessionReviews []sessionEntry) string {
 			mastered++
 		}
 	}
-	newCount := 0
+	newCount := totalQuestions - len(rl.Reviews)
+	if newCount < 0 {
+		newCount = 0
+	}
 	b.WriteString(fmt.Sprintf("  Due now:     %d\n", due))
 	b.WriteString(fmt.Sprintf("  Due today:   %d\n", dueToday))
+	b.WriteString(fmt.Sprintf("  New unseen:  %d\n", newCount))
 	b.WriteString(fmt.Sprintf("  Mastered:    %d\n", mastered))
-	_ = newCount
 
 	b.WriteString("\n═══════════════════════════════════════════\n")
 
