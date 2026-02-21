@@ -19,7 +19,7 @@ type ReviewLog struct {
 
 // ProblemReview tracks spaced repetition state for one problem.
 type ProblemReview struct {
-	Slug          string    `json:"slug"`
+	ProblemID     string    `json:"slug"` // JSON key kept as "slug" for backward compat with existing reviews.json
 	LastReviewAt  time.Time `json:"last_review_at"`
 	NextReviewAt  time.Time `json:"next_review_at"`
 	Interval      float64   `json:"interval"`      // days until next review
@@ -29,8 +29,8 @@ type ProblemReview struct {
 	SubmitHist    []int     `json:"submit_hist"`   // last 10 submit results (0=accepted, 1=wrong, 2=error, 3=none)
 	TotalReviews  int       `json:"total_reviews"`
 	TotalOptimal  int       `json:"total_optimal"`  // times picked optimal approach
-	TotalAccepted int       `json:"total_accepted"` // times leetgo submit was accepted
-	CodingTimes   []int     `json:"coding_times"`   // last 10 leetgo coding durations in seconds (0 = didn't code)
+	TotalAccepted int       `json:"total_accepted"` // times submit was accepted
+	CodingTimes   []int     `json:"coding_times"`   // last 10 coding durations in seconds (0 = didn't code)
 }
 
 const (
@@ -101,7 +101,7 @@ func (rl *ReviewLog) RecordReview(slug string, approach Rating, submitResult int
 	pr, ok := rl.Reviews[slug]
 	if !ok {
 		pr = &ProblemReview{
-			Slug:       slug,
+			ProblemID:  slug,
 			EaseFactor: 2.5,
 			Interval:   0,
 		}
@@ -154,7 +154,7 @@ func (rl *ReviewLog) PickNextQuestion(questions []Question, sessionSeen map[int]
 			continue
 		}
 
-		pr, reviewed := rl.Reviews[q.LeetcodeSlug]
+		pr, reviewed := rl.Reviews[q.ProblemID]
 		if !reviewed {
 			candidates = append(candidates, candidate{idx: i, priority: 1, overdue: 0})
 		} else if now.After(pr.NextReviewAt) {
@@ -223,7 +223,7 @@ func (rl *ReviewLog) Save() error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// ParseSubmitResult extracts the submit verdict from leetgo output.
+// ParseSubmitResult extracts the submit verdict from provider output.
 func ParseSubmitResult(output string) int {
 	lower := strings.ToLower(output)
 	if strings.Contains(lower, "accepted") {
@@ -411,7 +411,7 @@ func (rl *ReviewLog) LifetimeStats(questions []Question) string {
 		}
 
 		for _, q := range questions {
-			if q.LeetcodeSlug == pr.Slug {
+			if q.ProblemID == pr.ProblemID {
 				cat := q.Category
 				if cats[cat] == nil {
 					cats[cat] = &catStats{}
@@ -425,7 +425,7 @@ func (rl *ReviewLog) LifetimeStats(questions []Question) string {
 		}
 
 		if pr.TotalReviews >= 2 {
-			weakest = append(weakest, weakEntry{pr.Slug, pr.EaseFactor})
+			weakest = append(weakest, weakEntry{pr.ProblemID, pr.EaseFactor})
 		}
 	}
 
@@ -513,7 +513,7 @@ func (rl *ReviewLog) LifetimeStats(questions []Question) string {
 			}
 		}
 		codingEntries = append(codingEntries, codingEntry{
-			slug:    pr.Slug,
+			slug:    pr.ProblemID,
 			times:   nonZero,
 			latest:  nonZero[len(nonZero)-1],
 			fastest: fastest,
@@ -524,7 +524,7 @@ func (rl *ReviewLog) LifetimeStats(questions []Question) string {
 		sort.Slice(codingEntries, func(i, j int) bool {
 			return codingEntries[i].slug < codingEntries[j].slug
 		})
-		b.WriteString("\n  Coding Speed (leetgo):\n")
+		b.WriteString("\n  Coding Speed:\n")
 		b.WriteString(fmt.Sprintf("  Problems coded:     %d\n", len(codingEntries)))
 		b.WriteString(fmt.Sprintf("  Total sessions:     %d\n\n", totalCodingSessions))
 		b.WriteString("  Problem                          Latest   Best     Avg    Tries\n")
@@ -552,7 +552,7 @@ type sessionEntry struct {
 	slug         string
 	approach     Rating
 	submitResult int
-	codingTime   int // seconds spent coding in leetgo (0 = didn't code)
+	codingTime   int // seconds spent coding (0 = didn't code)
 }
 
 func pct(num, denom int) float64 {

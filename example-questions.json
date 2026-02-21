@@ -1,6 +1,6 @@
 [
   {
-    "Slug": "valid-anagram",
+    "ProblemID": "valid-anagram",
     "Options": [
       {
         "Text": "Use a frequency map counting characters in s, decrement for t, check all zero — O(n) time, O(1) space (26 letters max)",

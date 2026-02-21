@@ -1,4 +1,4 @@
-BINARY    := dsa-warmup
+BINARY    := warmup
 GOFILES   := $(wildcard *.go)
 
 .PHONY: build install clean fmt lint vet test run stats help

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -113,14 +111,18 @@ type Option struct {
 }
 
 type Question struct {
-	Title        string
-	Difficulty   Difficulty
-	Category     string
-	Description  string
-	Example      string
-	Options      []Option
-	Solution     string
-	LeetcodeSlug string
+	Title       string
+	Difficulty  Difficulty
+	Category    string
+	Description string
+	Example     string
+	Options     []Option
+	Solution    string
+	Provider    string    // which provider this came from ("leetcode", "mock", etc.)
+	ProblemID   string    // provider-specific identifier (replaces LeetcodeSlug)
+	CodeSnippet string    // language-specific function template for scaffolding
+	TestInput   string    // default test case input from provider
+	Meta        *FuncMeta // function metadata for test harness generation
 }
 
 type Stats struct {
@@ -139,7 +141,7 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-type leetgoResultMsg struct {
+type cmdResultMsg struct {
 	output string
 	err    error
 }
@@ -155,15 +157,15 @@ type model struct {
 	showSolution   bool
 	timer          int
 	timerRunning   bool
-	leetgoWorkdir  string    // leetgo workspace directory for "Try It"
-	triedIt        bool      // whether user has opened leetgo for current question
-	leetgoRunning  bool      // background test/submit in progress
-	leetgoOutput   string    // captured stdout+stderr from last test/submit
-	leetgoSpinner  int       // spinner frame index
-	leetgoAction   string    // "test" or "submit" — for status label
-	leetgoStarted  time.Time // wall-clock time when leetgo coding started
-	leetgoElapsed  int       // frozen elapsed seconds (set when timer stops)
-	leetgoTimerOn  bool      // whether the leetgo coding timer is running
+	scaffold       *Scaffold // workspace for solution files
+	triedIt        bool      // whether user has opened editor for current question
+	cmdRunning     bool      // background test/submit in progress
+	cmdOutput      string    // captured stdout+stderr from last test/submit
+	cmdSpinner     int       // spinner frame index
+	cmdAction      string    // "test" or "submit" — for status label
+	codingStarted  time.Time // wall-clock time when coding started
+	codingElapsed  int       // frozen elapsed seconds (set when timer stops)
+	codingTimerOn  bool      // whether the coding timer is running
 	lastMaxScroll  int       // max scroll offset from last render
 	timerExpired   bool
 	stats          Stats
@@ -176,18 +178,18 @@ type model struct {
 	sessionSeen    map[int]bool
 	submitResult   int    // current question's submit result (SubmitNone initially)
 	sessionReport  string // filled on quit, rendered after program exits
-	leetgoMessage  string // transient message shown when user tries unavailable action
+	statusMessage  string // transient message shown when user tries unavailable action
 	categoryFilter string // active category filter (empty = all categories)
 }
 
 const defaultTimer = 300
 
-// leetgoCodingSecs returns the total elapsed seconds on the leetgo coding timer.
-func (m model) leetgoCodingSecs() int {
-	if !m.leetgoTimerOn {
-		return m.leetgoElapsed
+// codingSecs returns the total elapsed seconds on the coding timer.
+func (m model) codingSecs() int {
+	if !m.codingTimerOn {
+		return m.codingElapsed
 	}
-	return m.leetgoElapsed + int(time.Since(m.leetgoStarted).Seconds())
+	return m.codingElapsed + int(time.Since(m.codingStarted).Seconds())
 }
 
 func (m *model) pickQuestion() {
@@ -233,13 +235,13 @@ func (m *model) saveCurrentReview() {
 
 	codingTime := 0
 	if m.triedIt {
-		codingTime = m.leetgoCodingSecs()
+		codingTime = m.codingSecs()
 	}
-	m.reviewLog.RecordReview(q.LeetcodeSlug, approach, m.submitResult, codingTime)
+	m.reviewLog.RecordReview(q.ProblemID, approach, m.submitResult, codingTime)
 
 	m.sessionEntries = append(m.sessionEntries, sessionEntry{
 		title:        q.Title,
-		slug:         q.LeetcodeSlug,
+		slug:         q.ProblemID,
 		approach:     approach,
 		submitResult: m.submitResult,
 		codingTime:   codingTime,
@@ -261,8 +263,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tickMsg:
 		m.lastMaxScroll = viewMaxScroll
-		if m.leetgoRunning {
-			m.leetgoSpinner++
+		if m.cmdRunning {
+			m.cmdSpinner++
 		}
 		if m.timerRunning && m.timer > 0 {
 			m.timer--
@@ -276,17 +278,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tickCmd()
 
-	case leetgoResultMsg:
-		m.leetgoRunning = false
-		m.leetgoOutput = stripANSI(msg.output)
-		if msg.err != nil && m.leetgoOutput == "" {
-			m.leetgoOutput = fmt.Sprintf("Error: %v", msg.err)
+	case cmdResultMsg:
+		m.cmdRunning = false
+		m.cmdOutput = stripANSI(msg.output)
+		if msg.err != nil && m.cmdOutput == "" {
+			m.cmdOutput = fmt.Sprintf("Error: %v", msg.err)
 		}
-		if m.leetgoAction == "submit" {
-			m.submitResult = ParseSubmitResult(m.leetgoOutput)
-			if m.submitResult == SubmitAccepted && m.leetgoTimerOn {
-				m.leetgoElapsed = m.leetgoCodingSecs()
-				m.leetgoTimerOn = false
+		if m.cmdAction == "submit" {
+			m.submitResult = ParseSubmitResult(m.cmdOutput)
+			if m.submitResult == SubmitAccepted && m.codingTimerOn {
+				m.codingElapsed = m.codingSecs()
+				m.codingTimerOn = false
 			}
 		}
 		return m, nil
@@ -361,66 +363,51 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "t":
-			if m.canTryIt() && !m.leetgoRunning {
+			if m.canTryIt() && !m.cmdRunning {
 				if !m.triedIt {
-					m.leetgoElapsed = 0
-					m.leetgoStarted = time.Now()
-					m.leetgoTimerOn = true
+					m.codingElapsed = 0
+					m.codingStarted = time.Now()
+					m.codingTimerOn = true
 				}
 				m.triedIt = true
-				m.leetgoMessage = ""
+				m.statusMessage = ""
 				return m, m.tryItCmd()
-			}
-			if m.wantsTryIt() && m.leetgoWorkdir == "" {
-				m.leetgoMessage = "leetgo workspace not configured. To enable:\n" +
-					"  1. mkdir ~/leetcode && cd ~/leetcode && leetgo init\n" +
-					"  2. Restart with: dsa-warmup -workspace ~/leetcode"
 			}
 			return m, nil
 
 		case "T":
-			if m.triedIt && !m.leetgoRunning {
-				m.leetgoRunning = true
-				m.leetgoAction = "test"
-				m.leetgoOutput = ""
-				m.leetgoSpinner = 0
-				m.leetgoMessage = ""
-				return m, m.leetgoRunCmd("test")
-			}
-			if m.wantsTryIt() && m.leetgoWorkdir == "" {
-				m.leetgoMessage = "leetgo workspace not configured. To enable:\n" +
-					"  1. mkdir ~/leetcode && cd ~/leetcode && leetgo init\n" +
-					"  2. Restart with: dsa-warmup -workspace ~/leetcode"
+			if m.triedIt && !m.cmdRunning {
+				m.cmdRunning = true
+				m.cmdAction = "test"
+				m.cmdOutput = ""
+				m.cmdSpinner = 0
+				m.statusMessage = ""
+				return m, m.providerRunCmd("test")
 			}
 			return m, nil
 
 		case "S":
-			if m.triedIt && !m.leetgoRunning {
-				m.leetgoRunning = true
-				m.leetgoAction = "submit"
-				m.leetgoOutput = ""
-				m.leetgoSpinner = 0
-				m.leetgoMessage = ""
-				return m, m.leetgoRunCmd("submit")
-			}
-			if m.wantsTryIt() && m.leetgoWorkdir == "" {
-				m.leetgoMessage = "leetgo workspace not configured. To enable:\n" +
-					"  1. mkdir ~/leetcode && cd ~/leetcode && leetgo init\n" +
-					"  2. Restart with: dsa-warmup -workspace ~/leetcode"
+			if m.triedIt && !m.cmdRunning {
+				m.cmdRunning = true
+				m.cmdAction = "submit"
+				m.cmdOutput = ""
+				m.cmdSpinner = 0
+				m.statusMessage = ""
+				return m, m.providerRunCmd("submit")
 			}
 			return m, nil
 
 		case "n":
-			if m.revealed && !m.leetgoRunning {
+			if m.revealed && !m.cmdRunning {
 				m.saveCurrentReview()
 				m.pickQuestion()
 				m.timerRunning = true
 				m.triedIt = false
-				m.leetgoElapsed = 0
-				m.leetgoTimerOn = false
-				m.leetgoOutput = ""
-				m.leetgoAction = ""
-				m.leetgoMessage = ""
+				m.codingElapsed = 0
+				m.codingTimerOn = false
+				m.cmdOutput = ""
+				m.cmdAction = ""
+				m.statusMessage = ""
 			}
 			return m, nil
 
@@ -443,14 +430,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) canTryIt() bool {
-	if !m.revealed || m.selected == -1 || m.leetgoWorkdir == "" {
+	if !m.revealed || m.selected == -1 || m.scaffold == nil {
 		return false
 	}
 	rating := m.shuffledOpts[m.selected].Rating
 	if rating != Optimal && rating != Plausible {
 		return false
 	}
-	return m.questions[m.currentIdx].LeetcodeSlug != ""
+	return m.questions[m.currentIdx].ProblemID != ""
 }
 
 // wantsTryIt reports whether the user earned Try It but may lack a workspace.
@@ -462,47 +449,62 @@ func (m model) wantsTryIt() bool {
 	if rating != Optimal && rating != Plausible {
 		return false
 	}
-	return m.questions[m.currentIdx].LeetcodeSlug != ""
+	return m.questions[m.currentIdx].ProblemID != ""
 }
 
-func (m model) problemExists(slug string) bool {
-	if m.leetgoWorkdir == "" {
+func (m model) problemExists() bool {
+	if m.scaffold == nil {
 		return false
 	}
-	pattern := m.leetgoWorkdir + "/go/*." + slug + "/solution.go"
-	matches, err := filepath.Glob(pattern)
-	return err == nil && len(matches) > 0
+	q := m.questions[m.currentIdx]
+	provider := q.Provider
+	if provider == "" {
+		provider = DefaultProviderName
+	}
+	return m.scaffold.Exists(provider, q.ProblemID)
 }
 
-// tryItCmd opens the problem in leetgo, using "edit" if already scaffolded
-// or "pick" to scaffold for the first time.
+// tryItCmd scaffolds the solution file (if needed) and opens it in the editor.
 func (m model) tryItCmd() tea.Cmd {
-	slug := m.questions[m.currentIdx].LeetcodeSlug
-	var cmd *exec.Cmd
-	if m.problemExists(slug) {
-		cmd = exec.Command("leetgo", "edit", slug, "-l", "go")
-	} else {
-		cmd = exec.Command("leetgo", "pick", slug, "-l", "go")
+	q := m.questions[m.currentIdx]
+	provider := q.Provider
+	if provider == "" {
+		provider = DefaultProviderName
 	}
-	if m.leetgoWorkdir != "" {
-		cmd.Dir = m.leetgoWorkdir
+
+	// Scaffold synchronously (just file writes, fast).
+	sp := ScaffoldProblem{
+		Provider:    provider,
+		ProblemID:   q.ProblemID,
+		Title:       q.Title,
+		Difficulty:  q.Difficulty.String(),
+		Description: q.Description,
+		Example:     q.Example,
+		CodeSnippet: q.CodeSnippet,
+		TestInput:   q.TestInput,
+		Meta:        q.Meta,
 	}
+	if _, err := m.scaffold.EnsureScaffold(sp); err != nil {
+		return func() tea.Msg {
+			return cmdResultMsg{output: fmt.Sprintf("Failed to scaffold: %v", err), err: err}
+		}
+	}
+
+	// Open editor.
+	cmd := m.scaffold.OpenInEditor(provider, q.ProblemID)
 	return tea.ExecProcess(cmd, func(err error) tea.Msg {
 		return nil
 	})
 }
 
-// leetgoRunCmd runs a leetgo subcommand in the background and returns a leetgoResultMsg.
-func (m model) leetgoRunCmd(subcmd string) tea.Cmd {
-	slug := m.questions[m.currentIdx].LeetcodeSlug
-	workdir := m.leetgoWorkdir
+// providerRunCmd runs test or submit via the provider (stubbed for Phase 1).
+func (m model) providerRunCmd(subcmd string) tea.Cmd {
+	q := m.questions[m.currentIdx]
 	return func() tea.Msg {
-		cmd := exec.Command("leetgo", subcmd, slug, "-l", "go")
-		if workdir != "" {
-			cmd.Dir = workdir
-		}
-		out, err := cmd.CombinedOutput()
-		return leetgoResultMsg{output: string(out), err: err}
+		// Phase 2 will implement native test/submit via the provider.
+		msg := fmt.Sprintf("Native %s coming soon.\n\nFor now, %s at:\n  https://leetcode.com/problems/%s/",
+			subcmd, subcmd, q.ProblemID)
+		return cmdResultMsg{output: msg, err: nil}
 	}
 }
 
@@ -721,7 +723,7 @@ func (m model) View() string {
 
 	var badges string
 	if m.reviewLog != nil {
-		if pr, ok := m.reviewLog.Reviews[q.LeetcodeSlug]; ok {
+		if pr, ok := m.reviewLog.Reviews[q.ProblemID]; ok {
 			days := pr.Interval
 			reps := pr.Repetitions
 			if days >= 21 && reps >= 3 {
@@ -848,21 +850,17 @@ func (m model) View() string {
 
 	if m.canTryIt() && !m.triedIt {
 		tryItStyle := lipgloss.NewStyle().Foreground(colorGreen).Bold(true)
-		b.WriteString(tryItStyle.Render("Press [t] to open in leetgo"))
-		b.WriteString("\n")
-	} else if m.wantsTryIt() && m.leetgoWorkdir == "" && !m.triedIt {
-		noWorkStyle := lipgloss.NewStyle().Foreground(colorRed)
-		b.WriteString(noWorkStyle.Render("[t] Try It — leetgo workspace not configured"))
+		b.WriteString(tryItStyle.Render("Press [t] to open in editor"))
 		b.WriteString("\n")
 	}
 
 	if m.triedIt {
-		lgElapsed := m.leetgoCodingSecs()
+		lgElapsed := m.codingSecs()
 		lgMins := lgElapsed / 60
 		lgSecs := lgElapsed % 60
 		lgTimeStr := fmt.Sprintf("%02d:%02d", lgMins, lgSecs)
 		var lgTimerLine string
-		if !m.leetgoTimerOn && lgElapsed > 0 {
+		if !m.codingTimerOn && lgElapsed > 0 {
 			// Timer stopped (accepted) — show final time in green
 			lgTimerLine = lipgloss.NewStyle().
 				Foreground(colorGreen).
@@ -878,41 +876,41 @@ func (m model) View() string {
 		b.WriteString("\n")
 	}
 
-	if m.leetgoMessage != "" {
+	if m.statusMessage != "" {
 		msgStyle := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorRed).
 			Foreground(colorRed).
 			Padding(0, 1).
 			MaxWidth(maxW - 2)
-		b.WriteString(msgStyle.Render(m.leetgoMessage))
+		b.WriteString(msgStyle.Render(m.statusMessage))
 		b.WriteString("\n")
 	}
 
-	if m.leetgoRunning {
-		frame := spinnerFrames[m.leetgoSpinner%len(spinnerFrames)]
-		slug := q.LeetcodeSlug
+	if m.cmdRunning {
+		frame := spinnerFrames[m.cmdSpinner%len(spinnerFrames)]
+		slug := q.ProblemID
 		action := "Testing"
-		if m.leetgoAction == "submit" {
+		if m.cmdAction == "submit" {
 			action = "Submitting"
 		}
 		spinStyle := lipgloss.NewStyle().Foreground(colorBlue).Bold(true)
 		b.WriteString(spinStyle.Render(fmt.Sprintf("%s %s %s...", frame, action, slug)))
 		b.WriteString("\n")
-	} else if m.leetgoOutput != "" {
+	} else if m.cmdOutput != "" {
 		outStyle := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorGreen).
 			Padding(0, 1).
 			MaxWidth(maxW - 2)
 		label := "Test"
-		if m.leetgoAction == "submit" {
+		if m.cmdAction == "submit" {
 			label = "Submit"
 		}
 		labelStyle := lipgloss.NewStyle().Foreground(colorGreen).Bold(true)
 		b.WriteString(labelStyle.Render(fmt.Sprintf("── %s Result ──", label)))
 		b.WriteString("\n")
-		wrapped := wrapLines(strings.TrimSpace(m.leetgoOutput), maxW-6)
+		wrapped := wrapLines(strings.TrimSpace(m.cmdOutput), maxW-6)
 		b.WriteString(outStyle.Render(wrapped))
 		b.WriteString("\n")
 	}
@@ -928,19 +926,11 @@ func (m model) View() string {
 			"[q] Quit",
 		)
 	} else {
-		noWorkRedStyle := lipgloss.NewStyle().Foreground(colorRed)
 		if m.canTryIt() && !m.triedIt {
 			helpParts = append(helpParts, "[t] Try It")
-		} else if m.wantsTryIt() && m.leetgoWorkdir == "" {
-			helpParts = append(
-				helpParts,
-				noWorkRedStyle.Render("[t] Try It"),
-				noWorkRedStyle.Render("[T] Test"),
-				noWorkRedStyle.Render("[S] Submit"),
-			)
 		}
 		if m.triedIt {
-			if m.leetgoRunning {
+			if m.cmdRunning {
 				dimStyle := lipgloss.NewStyle().Foreground(colorDim)
 				helpParts = append(
 					helpParts,
@@ -1286,113 +1276,40 @@ func main() {
 	questionsFile := flag.String(
 		"questions",
 		"",
-		"Path to JSON file with additional curated questions (slug + approaches)",
-	)
-	workspace := flag.String(
-		"workspace",
-		"",
-		"Path to leetgo workspace directory (auto-detected if not set)",
+		"Path to JSON file with additional curated questions (ProblemID + approaches)",
 	)
 	showStats := flag.Bool("stats", false, "Show lifetime stats and exit")
 	categoryFilter := flag.String("category", "", "Focus on a specific category (case-insensitive partial match)")
 	listCategories := flag.Bool("categories", false, "List available categories and exit")
+	lang := flag.String("lang", "go", "Programming language for code snippets")
 	flag.Parse()
 
-	if _, err := exec.LookPath("leetgo"); err != nil {
-		fmt.Fprintln(os.Stderr, "leetgo is not installed.")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(
-			os.Stderr,
-			"This tool uses leetgo to fetch LeetCode problems and run test/submit.",
-		)
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Setup:")
-		fmt.Fprintln(os.Stderr, "  1. Install leetgo:")
-		fmt.Fprintln(os.Stderr, "       go install github.com/j178/leetgo@latest")
-		fmt.Fprintln(os.Stderr, "  2. Create a workspace:")
-		fmt.Fprintln(os.Stderr, "       mkdir ~/leetcode && cd ~/leetcode && leetgo init")
-		fmt.Fprintln(os.Stderr, "  3. Download the question database:")
-		fmt.Fprintln(os.Stderr, "       leetgo cache update")
-		fmt.Fprintln(os.Stderr, "  4. Run this tool:")
-		fmt.Fprintln(os.Stderr, "       dsa-warmup -workspace ~/leetcode")
+	// Initialize the question cache.
+	cache, err := NewQuestionCache("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing cache: %v\n", err)
 		os.Exit(1)
 	}
 
-	dbPath, err := findLeetgoDatabase()
+	// Initialize the scaffold (workspace for solution files).
+	scaffold, err := NewScaffold("", *lang)
 	if err != nil {
-		workdir := *workspace
-		if workdir == "" {
-			workdir = findLeetgoWorkspace()
-		}
-		if workdir != "" {
-			fmt.Println("Question database not found. Running leetgo cache update...")
-			cacheCmd := exec.Command("leetgo", "cache", "update")
-			cacheCmd.Dir = workdir
-			cacheCmd.Stdout = os.Stdout
-			cacheCmd.Stderr = os.Stderr
-			if err := cacheCmd.Run(); err != nil {
-				fmt.Fprintf(os.Stderr, "\nleetgo cache update failed: %v\n", err)
-				os.Exit(1)
-			}
-			dbPath, err = findLeetgoDatabase()
-		}
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Question database not found.")
-			fmt.Fprintln(os.Stderr, "")
-			fmt.Fprintln(
-				os.Stderr,
-				"The leetgo question cache is needed to load problem descriptions.",
-			)
-			fmt.Fprintln(os.Stderr, "")
-			fmt.Fprintln(os.Stderr, "Setup:")
-			fmt.Fprintln(os.Stderr, "  1. Create a leetgo workspace (if you haven't already):")
-			fmt.Fprintln(os.Stderr, "       mkdir ~/leetcode && cd ~/leetcode && leetgo init")
-			fmt.Fprintln(os.Stderr, "  2. Download the question database:")
-			fmt.Fprintln(os.Stderr, "       cd ~/leetcode && leetgo cache update")
-			fmt.Fprintln(os.Stderr, "  3. Run this tool:")
-			fmt.Fprintln(os.Stderr, "       dsa-warmup -workspace ~/leetcode")
-			os.Exit(1)
-		}
+		fmt.Fprintf(os.Stderr, "Error initializing workspace: %v\n", err)
+		os.Exit(1)
 	}
 
-	workdir := *workspace
-	if workdir == "" {
-		workdir = findLeetgoWorkspace()
-	}
-	if workdir == "" {
-		fmt.Fprintln(os.Stderr, "Warning: no leetgo workspace found.")
-		fmt.Fprintln(os.Stderr, "  [t] Try It, [T] Test, and [S] Submit will be disabled.")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "  To enable, either:")
-		fmt.Fprintln(os.Stderr, "    - Run from a directory containing leetgo.yaml")
-		fmt.Fprintln(os.Stderr, "    - Pass -workspace <path> to your leetgo workspace")
-		fmt.Fprintln(
-			os.Stderr,
-			"    - Create one: mkdir ~/leetcode && cd ~/leetcode && leetgo init",
-		)
-		fmt.Fprintln(os.Stderr, "")
-	}
-
-	if workdir != "" {
-		fmt.Print("Updating leetgo cache...")
-		cacheCmd := exec.Command("leetgo", "cache", "update")
-		cacheCmd.Dir = workdir
-		if out, err := cacheCmd.CombinedOutput(); err != nil {
-			fmt.Fprintf(os.Stderr, " failed: %s\n", strings.TrimSpace(string(out)))
-		} else {
-			fmt.Println(" done")
-		}
-	}
-
+	// Load curated questions via providers.
+	fmt.Print("Loading questions...")
 	allCurated := append(curatedBank, curatedBankExtended...)
-	questions, err := loadQuestions(dbPath, allCurated)
+	questions, err := loadQuestionsFromProviders(allCurated, cache, *lang)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading questions: %v\n", err)
+		fmt.Fprintf(os.Stderr, "\nError loading questions: %v\n", err)
 		os.Exit(1)
 	}
+	fmt.Printf(" %d loaded\n", len(questions))
 
 	if *questionsFile != "" {
-		extra, err := loadQuestionsFromJSON(dbPath, *questionsFile)
+		extra, err := loadQuestionsFromJSONFile(*questionsFile, cache, *lang)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to load %s: %v\n", *questionsFile, err)
 		} else {
@@ -1469,12 +1386,12 @@ func main() {
 	now := time.Now()
 	dueCount := 0
 	reviewedCount := 0
-	slugSet := make(map[string]bool, len(questions))
+	idSet := make(map[string]bool, len(questions))
 	for _, q := range questions {
-		slugSet[q.LeetcodeSlug] = true
+		idSet[q.ProblemID] = true
 	}
-	for slug, pr := range reviewLog.Reviews {
-		if !slugSet[slug] {
+	for id, pr := range reviewLog.Reviews {
+		if !idSet[id] {
 			continue
 		}
 		reviewedCount++
@@ -1484,11 +1401,7 @@ func main() {
 	}
 	newCount := len(questions) - reviewedCount
 
-	fmt.Printf("Loaded %d questions from leetgo database\n", len(questions))
 	fmt.Printf("Due: %d | New: %d | Reviewed: %d\n", dueCount, newCount, reviewedCount)
-	if workdir != "" {
-		fmt.Printf("leetgo workspace: %s\n", workdir)
-	}
 	time.Sleep(1 * time.Second)
 
 	m := model{
@@ -1497,7 +1410,7 @@ func main() {
 		timer:          defaultTimer,
 		width:          80,
 		height:         40,
-		leetgoWorkdir:  workdir,
+		scaffold:       scaffold,
 		reviewLog:      reviewLog,
 		sessionSeen:    make(map[int]bool),
 		submitResult:   SubmitNone,
