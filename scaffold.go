@@ -291,6 +291,85 @@ func findEditor() string {
 	return "vi"
 }
 
+// --- Code extraction ---
+
+// ExtractCode reads the solution file and returns the code between @lc markers.
+// If no markers are found, returns the entire file content (for non-scaffolded files).
+func (s *Scaffold) ExtractCode(provider, problemID string) (string, error) {
+	solPath := s.SolutionPath(provider, problemID)
+	data, err := os.ReadFile(solPath)
+	if err != nil {
+		return "", fmt.Errorf("read solution file: %w", err)
+	}
+
+	content := string(data)
+	return extractCodeBetweenMarkers(content), nil
+}
+
+// extractCodeBetweenMarkers extracts code between @lc code=begin and @lc code=end markers.
+// Returns the full content if markers aren't found.
+func extractCodeBetweenMarkers(content string) string {
+	lines := strings.Split(content, "\n")
+
+	beginIdx := -1
+	endIdx := -1
+	for i, line := range lines {
+		if strings.Contains(line, codeBeginMarker) {
+			beginIdx = i
+		}
+		if strings.Contains(line, codeEndMarker) {
+			endIdx = i
+			break
+		}
+	}
+
+	if beginIdx == -1 || endIdx == -1 || beginIdx >= endIdx {
+		return content
+	}
+
+	// Extract lines between markers (exclusive of marker lines).
+	extracted := lines[beginIdx+1 : endIdx]
+	return strings.TrimSpace(strings.Join(extracted, "\n"))
+}
+
+// ReadTestInput reads the test input from testcases.txt.
+// Returns the content between "input:" and "output:" markers.
+func (s *Scaffold) ReadTestInput(provider, problemID string) (string, error) {
+	tcPath := s.TestCasesPath(provider, problemID)
+	data, err := os.ReadFile(tcPath)
+	if err != nil {
+		return "", fmt.Errorf("read test cases file: %w", err)
+	}
+
+	content := string(data)
+	return parseTestCasesInput(content), nil
+}
+
+// parseTestCasesInput extracts the input section from testcases.txt content.
+// Format: "input:\n<data>\noutput:\n<data>"
+func parseTestCasesInput(content string) string {
+	lines := strings.Split(content, "\n")
+
+	inInput := false
+	var inputLines []string
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "input:" {
+			inInput = true
+			continue
+		}
+		if trimmed == "output:" {
+			break
+		}
+		if inInput {
+			inputLines = append(inputLines, line)
+		}
+	}
+
+	return strings.TrimSpace(strings.Join(inputLines, "\n"))
+}
+
 // --- File builders ---
 
 // buildSolutionFile generates the complete solution file with code markers and test harness.

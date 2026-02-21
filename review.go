@@ -355,8 +355,8 @@ func (rl *ReviewLog) LifetimeStats(questions []Question) string {
 	b.WriteString("           DSA WARMUP STATS\n")
 	b.WriteString("═══════════════════════════════════════════\n\n")
 
-	totalReviewed := len(rl.Reviews)
 	totalQuestions := len(questions)
+	totalReviewed := 0
 	totalReviews := 0
 	totalOptimal := 0
 	totalAccepted := 0
@@ -366,6 +366,13 @@ func (rl *ReviewLog) LifetimeStats(questions []Question) string {
 	dueNow := 0
 	dueToday := 0
 	mastered := 0
+
+	// Build a set of problem IDs from the (potentially filtered) questions list
+	// so all stats are scoped correctly when --category is active.
+	questionIDs := make(map[string]bool, len(questions))
+	for _, q := range questions {
+		questionIDs[q.ProblemID] = true
+	}
 
 	type catStats struct {
 		reviewed int
@@ -391,6 +398,12 @@ func (rl *ReviewLog) LifetimeStats(questions []Question) string {
 	var weakest []weakEntry
 
 	for _, pr := range rl.Reviews {
+		// Only count reviews for problems in the current question set.
+		if !questionIDs[pr.ProblemID] {
+			continue
+		}
+
+		totalReviewed++
 		totalReviews += pr.TotalReviews
 		totalOptimal += pr.TotalOptimal
 		totalAccepted += pr.TotalAccepted
@@ -494,6 +507,9 @@ func (rl *ReviewLog) LifetimeStats(questions []Question) string {
 	var codingEntries []codingEntry
 	totalCodingSessions := 0
 	for _, pr := range rl.Reviews {
+		if !questionIDs[pr.ProblemID] {
+			continue
+		}
 		var nonZero []int
 		for _, t := range pr.CodingTimes {
 			if t > 0 {

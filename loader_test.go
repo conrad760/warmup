@@ -63,7 +63,7 @@ func TestLoadQuestionsFromProviders_Mock(t *testing.T) {
 		},
 	}
 
-	questions, err := loadQuestionsFromProviders(curated, cache, "go")
+	questions, _, err := loadQuestionsFromProviders(curated, cache, "go")
 	if err != nil {
 		t.Fatalf("loadQuestionsFromProviders: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestLoadQuestionsFromProviders_DefaultProvider(t *testing.T) {
 		},
 	}
 
-	questions, err := loadQuestionsFromProviders(curated, cache, "go")
+	questions, _, err := loadQuestionsFromProviders(curated, cache, "go")
 	if err != nil {
 		t.Fatalf("loadQuestionsFromProviders: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestLoadQuestionsFromProviders_UnknownProvider(t *testing.T) {
 		},
 	}
 
-	_, err = loadQuestionsFromProviders(curated, cache, "go")
+	_, _, err = loadQuestionsFromProviders(curated, cache, "go")
 	if err == nil {
 		t.Fatal("expected error for unknown provider")
 	}
@@ -181,7 +181,7 @@ func TestLoadQuestionsFromJSONFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	questions, err := loadQuestionsFromJSONFile(jsonPath, cache, "go")
+	questions, _, err := loadQuestionsFromJSONFile(jsonPath, cache, "go")
 	if err != nil {
 		t.Fatalf("loadQuestionsFromJSONFile: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestLoadQuestionsFromJSONFile_Validation(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			_, err := loadQuestionsFromJSONFile(jsonPath, cache, "go")
+			_, _, err := loadQuestionsFromJSONFile(jsonPath, cache, "go")
 			if err == nil {
 				t.Error("expected validation error")
 			}

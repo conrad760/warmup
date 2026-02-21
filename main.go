@@ -120,6 +120,7 @@ type Question struct {
 	Solution    string
 	Provider    string    // which provider this came from ("leetcode", "mock", etc.)
 	ProblemID   string    // provider-specific identifier (replaces LeetcodeSlug)
+	QuestionID  string    // numeric/internal ID for test/submit APIs
 	CodeSnippet string    // language-specific function template for scaffolding
 	TestInput   string    // default test case input from provider
 	Meta        *FuncMeta // function metadata for test harness generation
@@ -157,16 +158,18 @@ type model struct {
 	showSolution   bool
 	timer          int
 	timerRunning   bool
-	scaffold       *Scaffold // workspace for solution files
-	triedIt        bool      // whether user has opened editor for current question
-	cmdRunning     bool      // background test/submit in progress
-	cmdOutput      string    // captured stdout+stderr from last test/submit
-	cmdSpinner     int       // spinner frame index
-	cmdAction      string    // "test" or "submit" — for status label
-	codingStarted  time.Time // wall-clock time when coding started
-	codingElapsed  int       // frozen elapsed seconds (set when timer stops)
-	codingTimerOn  bool      // whether the coding timer is running
-	lastMaxScroll  int       // max scroll offset from last render
+	scaffold       *Scaffold           // workspace for solution files
+	providers      map[string]Provider // initialized provider instances for test/submit
+	langSlug       string              // normalized language slug for provider calls
+	triedIt        bool                // whether user has opened editor for current question
+	cmdRunning     bool                // background test/submit in progress
+	cmdOutput      string              // captured stdout+stderr from last test/submit
+	cmdSpinner     int                 // spinner frame index
+	cmdAction      string              // "test" or "submit" — for status label
+	codingStarted  time.Time           // wall-clock time when coding started
+	codingElapsed  int                 // frozen elapsed seconds (set when timer stops)
+	codingTimerOn  bool                // whether the coding timer is running
+	lastMaxScroll  int                 // max scroll offset from last render
 	timerExpired   bool
 	stats          Stats
 	width          int
@@ -497,15 +500,144 @@ func (m model) tryItCmd() tea.Cmd {
 	})
 }
 
-// providerRunCmd runs test or submit via the provider (stubbed for Phase 1).
+// providerRunCmd runs test or submit via the provider.
+// Extracts user code from the scaffold, authenticates the provider if needed,
+// and runs the operation asynchronously (returns results via cmdResultMsg).
 func (m model) providerRunCmd(subcmd string) tea.Cmd {
 	q := m.questions[m.currentIdx]
-	return func() tea.Msg {
-		// Phase 2 will implement native test/submit via the provider.
-		msg := fmt.Sprintf("Native %s coming soon.\n\nFor now, %s at:\n  https://leetcode.com/problems/%s/",
-			subcmd, subcmd, q.ProblemID)
-		return cmdResultMsg{output: msg, err: nil}
+	provider := q.Provider
+	if provider == "" {
+		provider = DefaultProviderName
 	}
+
+	// Capture everything the closure needs from the model.
+	scaffold := m.scaffold
+	providers := m.providers
+	langSlug := m.langSlug
+
+	return func() tea.Msg {
+		// Look up the provider instance.
+		p, ok := providers[provider]
+		if !ok {
+			return cmdResultMsg{
+				output: fmt.Sprintf("Provider %q not available.\nTest/submit at:\n  https://leetcode.com/problems/%s/", provider, q.ProblemID),
+			}
+		}
+
+		// Ensure authentication.
+		if auth, ok := p.(Authenticator); ok {
+			if !auth.IsAuthenticated() {
+				if err := auth.Authenticate(); err != nil {
+					return cmdResultMsg{
+						output: fmt.Sprintf("Authentication required for %s.\n\n%s", subcmd, auth.AuthHelp()),
+					}
+				}
+			}
+		}
+
+		// Extract user code from the scaffold.
+		code, err := scaffold.ExtractCode(provider, q.ProblemID)
+		if err != nil {
+			return cmdResultMsg{output: fmt.Sprintf("Failed to read solution: %v", err), err: err}
+		}
+
+		switch subcmd {
+		case "test":
+			tester, ok := p.(Tester)
+			if !ok {
+				return cmdResultMsg{
+					output: fmt.Sprintf("Provider %q does not support testing.\nTest at:\n  https://leetcode.com/problems/%s/", provider, q.ProblemID),
+				}
+			}
+
+			// Read test input from scaffold.
+			input, err := scaffold.ReadTestInput(provider, q.ProblemID)
+			if err != nil {
+				// Fall back to the question's default test input.
+				input = q.TestInput
+			}
+			if input == "" {
+				return cmdResultMsg{output: "No test input available. Add test cases to testcases.txt."}
+			}
+
+			// Submit test and poll for results.
+			runID, err := tester.RunTests(q.ProblemID, langSlug, code, input)
+			if err != nil {
+				return cmdResultMsg{output: fmt.Sprintf("Test failed: %v", err), err: err}
+			}
+
+			interval, timeout := pollTimings(p)
+			result, err := pollTestResult(tester, runID, interval, timeout)
+			if err != nil {
+				return cmdResultMsg{output: fmt.Sprintf("Test failed: %v", err), err: err}
+			}
+			return cmdResultMsg{output: result.RawOutput}
+
+		case "submit":
+			submitter, ok := p.(Submitter)
+			if !ok {
+				return cmdResultMsg{
+					output: fmt.Sprintf("Provider %q does not support submit.\nSubmit at:\n  https://leetcode.com/problems/%s/", provider, q.ProblemID),
+				}
+			}
+
+			subID, err := submitter.Submit(q.ProblemID, langSlug, code)
+			if err != nil {
+				return cmdResultMsg{output: fmt.Sprintf("Submit failed: %v", err), err: err}
+			}
+
+			interval, timeout := pollTimings(p)
+			result, err := pollSubmitResult(submitter, subID, interval, timeout)
+			if err != nil {
+				return cmdResultMsg{output: fmt.Sprintf("Submit failed: %v", err), err: err}
+			}
+			return cmdResultMsg{output: result.RawOutput}
+
+		default:
+			return cmdResultMsg{output: fmt.Sprintf("Unknown command: %s", subcmd)}
+		}
+	}
+}
+
+// pollTestResult polls a Tester for test results with timeout.
+func pollTestResult(t Tester, runID string, interval, timeout time.Duration) (*TestResult, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		time.Sleep(interval)
+		result, done, err := t.CheckTestResult(runID)
+		if err != nil {
+			return nil, err
+		}
+		if done {
+			return result, nil
+		}
+	}
+	return nil, fmt.Errorf("timed out waiting for test result")
+}
+
+// pollSubmitResult polls a Submitter for submit results with timeout.
+func pollSubmitResult(s Submitter, subID string, interval, timeout time.Duration) (*SubmitResult, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		time.Sleep(interval)
+		result, done, err := s.CheckSubmission(subID)
+		if err != nil {
+			return nil, err
+		}
+		if done {
+			return result, nil
+		}
+	}
+	return nil, fmt.Errorf("timed out waiting for submission result")
+}
+
+// pollTimings extracts poll interval and timeout from a provider if it implements PollConfig,
+// otherwise returns production defaults.
+func pollTimings(p Provider) (interval, timeout time.Duration) {
+	if pc, ok := p.(PollConfig); ok {
+		return pc.PollInterval(), pc.PollTimeout()
+	}
+	return defaultPollInterval, defaultPollTimeout
 }
 
 var (
@@ -898,16 +1030,18 @@ func (m model) View() string {
 		b.WriteString(spinStyle.Render(fmt.Sprintf("%s %s %s...", frame, action, slug)))
 		b.WriteString("\n")
 	} else if m.cmdOutput != "" {
+		// Color the result box based on actual outcome.
+		resultColor := cmdResultColor(m.cmdAction, m.submitResult, m.cmdOutput)
 		outStyle := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorGreen).
+			BorderForeground(resultColor).
 			Padding(0, 1).
 			MaxWidth(maxW - 2)
 		label := "Test"
 		if m.cmdAction == "submit" {
 			label = "Submit"
 		}
-		labelStyle := lipgloss.NewStyle().Foreground(colorGreen).Bold(true)
+		labelStyle := lipgloss.NewStyle().Foreground(resultColor).Bold(true)
 		b.WriteString(labelStyle.Render(fmt.Sprintf("── %s Result ──", label)))
 		b.WriteString("\n")
 		wrapped := wrapLines(strings.TrimSpace(m.cmdOutput), maxW-6)
@@ -1120,6 +1254,47 @@ func formatExample(text string, maxWidth int) string {
 	return strings.Join(out, "\n")
 }
 
+// cmdResultColor returns the display color for test/submit result output.
+// Green only for actual success; red for failures, errors, auth issues.
+func cmdResultColor(action string, submitResult int, output string) lipgloss.Color {
+	lower := strings.ToLower(output)
+
+	// For submit actions, prefer the structured enum over string matching.
+	// This avoids false positives where e.g. "Compile Error" in output text
+	// would override a SubmitAccepted result.
+	if action == "submit" && submitResult != SubmitNone {
+		switch submitResult {
+		case SubmitAccepted:
+			return colorGreen
+		case SubmitWrong:
+			return colorRed
+		case SubmitError:
+			return colorRed
+		}
+	}
+
+	// Check for clear error indicators (auth failures, timeouts, etc.).
+	if strings.Contains(lower, "authentication required") ||
+		strings.Contains(lower, "not authenticated") ||
+		strings.Contains(lower, "timed out") {
+		return colorRed
+	}
+
+	// For test results (no structured enum), use output content.
+	if strings.HasPrefix(lower, "accepted") {
+		return colorGreen
+	}
+	if strings.Contains(lower, "error") ||
+		strings.Contains(lower, "failed") ||
+		strings.Contains(lower, "wrong answer") ||
+		strings.Contains(lower, "time limit") ||
+		strings.Contains(lower, "memory limit") {
+		return colorRed
+	}
+
+	return colorYellow
+}
+
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 func highlightGo(code string) string {
@@ -1301,7 +1476,7 @@ func main() {
 	// Load curated questions via providers.
 	fmt.Print("Loading questions...")
 	allCurated := append(curatedBank, curatedBankExtended...)
-	questions, err := loadQuestionsFromProviders(allCurated, cache, *lang)
+	questions, providerInstances, err := loadQuestionsFromProviders(allCurated, cache, *lang)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\nError loading questions: %v\n", err)
 		os.Exit(1)
@@ -1309,11 +1484,16 @@ func main() {
 	fmt.Printf(" %d loaded\n", len(questions))
 
 	if *questionsFile != "" {
-		extra, err := loadQuestionsFromJSONFile(*questionsFile, cache, *lang)
+		extra, extraProviders, err := loadQuestionsFromJSONFile(*questionsFile, cache, *lang)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to load %s: %v\n", *questionsFile, err)
 		} else {
 			questions = append(questions, extra...)
+			for k, v := range extraProviders {
+				if _, exists := providerInstances[k]; !exists {
+					providerInstances[k] = v
+				}
+			}
 			fmt.Printf("Loaded %d additional questions from %s\n", len(extra), *questionsFile)
 		}
 	}
@@ -1411,6 +1591,8 @@ func main() {
 		width:          80,
 		height:         40,
 		scaffold:       scaffold,
+		providers:      providerInstances,
+		langSlug:       normalizeLangSlug(*lang),
 		reviewLog:      reviewLog,
 		sessionSeen:    make(map[int]bool),
 		submitResult:   SubmitNone,

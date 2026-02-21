@@ -444,6 +444,256 @@ func TestLookupLang_HasCommentStyle(t *testing.T) {
 	}
 }
 
+// --- ExtractCode tests ---
+
+func TestExtractCodeBetweenMarkers(t *testing.T) {
+	content := `package main
+
+import "fmt"
+
+// @lc code=begin
+
+func twoSum(nums []int, target int) []int {
+    m := make(map[int]int)
+    for i, n := range nums {
+        if j, ok := m[target-n]; ok {
+            return []int{j, i}
+        }
+        m[n] = i
+    }
+    return nil
+}
+
+// @lc code=end
+
+func main() {
+    fmt.Println("test harness")
+}
+`
+	got := extractCodeBetweenMarkers(content)
+
+	if !strings.Contains(got, "func twoSum") {
+		t.Error("should extract the user's solution function")
+	}
+	if strings.Contains(got, "@lc code=begin") {
+		t.Error("should not include the begin marker")
+	}
+	if strings.Contains(got, "@lc code=end") {
+		t.Error("should not include the end marker")
+	}
+	if strings.Contains(got, "func main()") {
+		t.Error("should not include func main (it's after end marker)")
+	}
+	if strings.Contains(got, "package main") {
+		t.Error("should not include package declaration (it's before begin marker)")
+	}
+}
+
+func TestExtractCodeBetweenMarkers_NoMarkers(t *testing.T) {
+	content := `func twoSum(nums []int, target int) []int {
+    return nil
+}
+`
+	got := extractCodeBetweenMarkers(content)
+	if got != content {
+		t.Error("with no markers, should return entire content")
+	}
+}
+
+func TestExtractCodeBetweenMarkers_EmptyBetweenMarkers(t *testing.T) {
+	content := `// @lc code=begin
+// @lc code=end
+`
+	got := extractCodeBetweenMarkers(content)
+	if got != "" {
+		t.Errorf("empty between markers should return empty string, got: %q", got)
+	}
+}
+
+func TestScaffold_ExtractCode(t *testing.T) {
+	dir := t.TempDir()
+	s, err := NewScaffold(dir, "go")
+	if err != nil {
+		t.Fatalf("NewScaffold: %v", err)
+	}
+
+	p := testProblem()
+	_, err = s.EnsureScaffold(p)
+	if err != nil {
+		t.Fatalf("EnsureScaffold: %v", err)
+	}
+
+	code, err := s.ExtractCode(p.Provider, p.ProblemID)
+	if err != nil {
+		t.Fatalf("ExtractCode: %v", err)
+	}
+
+	if !strings.Contains(code, "func twoSum") {
+		t.Error("extracted code should contain the function")
+	}
+	if strings.Contains(code, "func main()") {
+		t.Error("extracted code should not include func main")
+	}
+}
+
+func TestScaffold_ExtractCode_MissingFile(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := NewScaffold(dir, "go")
+	_, err := s.ExtractCode("leetcode", "nonexistent")
+	if err == nil {
+		t.Error("ExtractCode should fail for missing file")
+	}
+}
+
+// --- ReadTestInput tests ---
+
+func TestParseTestCasesInput(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{
+			name:    "standard format",
+			content: "input:\n[2,7,11,15]\n9\noutput:\n[0,1]\n",
+			want:    "[2,7,11,15]\n9",
+		},
+		{
+			name:    "empty input",
+			content: "input:\n\noutput:\n",
+			want:    "",
+		},
+		{
+			name:    "multiline input",
+			content: "input:\n[[1,2],[3,4]]\n[5,6]\n7\noutput:\n42\n",
+			want:    "[[1,2],[3,4]]\n[5,6]\n7",
+		},
+		{
+			name:    "no markers",
+			content: "just some text",
+			want:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseTestCasesInput(tt.content)
+			if got != tt.want {
+				t.Errorf("parseTestCasesInput = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestScaffold_ReadTestInput(t *testing.T) {
+	dir := t.TempDir()
+	s, err := NewScaffold(dir, "go")
+	if err != nil {
+		t.Fatalf("NewScaffold: %v", err)
+	}
+
+	p := testProblem()
+	_, err = s.EnsureScaffold(p)
+	if err != nil {
+		t.Fatalf("EnsureScaffold: %v", err)
+	}
+
+	input, err := s.ReadTestInput(p.Provider, p.ProblemID)
+	if err != nil {
+		t.Fatalf("ReadTestInput: %v", err)
+	}
+
+	if !strings.Contains(input, "[2,7,11,15]") {
+		t.Errorf("input should contain test data, got: %q", input)
+	}
+	if !strings.Contains(input, "9") {
+		t.Errorf("input should contain target, got: %q", input)
+	}
+}
+
+func TestScaffold_ReadTestInput_MissingFile(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := NewScaffold(dir, "go")
+	_, err := s.ReadTestInput("leetcode", "nonexistent")
+	if err == nil {
+		t.Error("ReadTestInput should fail for missing file")
+	}
+}
+
+// --- cmdResultColor tests ---
+
+func TestCmdResultColor_SubmitAccepted(t *testing.T) {
+	got := cmdResultColor("submit", SubmitAccepted, "Accepted\nRuntime: 3 ms")
+	if got != colorGreen {
+		t.Error("accepted submit should be green")
+	}
+}
+
+func TestCmdResultColor_SubmitWrong(t *testing.T) {
+	got := cmdResultColor("submit", SubmitWrong, "Wrong Answer\nCases: 45/50")
+	if got != colorRed {
+		t.Error("wrong answer submit should be red")
+	}
+}
+
+func TestCmdResultColor_SubmitError(t *testing.T) {
+	got := cmdResultColor("submit", SubmitError, "Time Limit Exceeded")
+	if got != colorRed {
+		t.Error("error submit should be red")
+	}
+}
+
+func TestCmdResultColor_AuthError(t *testing.T) {
+	got := cmdResultColor("submit", SubmitNone, "Authentication required for submit.")
+	if got != colorRed {
+		t.Error("auth error should be red")
+	}
+}
+
+func TestCmdResultColor_SubmitFailed(t *testing.T) {
+	got := cmdResultColor("submit", SubmitNone, "Submit failed: HTTP 403")
+	if got != colorRed {
+		t.Error("submit failure should be red")
+	}
+}
+
+func TestCmdResultColor_TestAccepted(t *testing.T) {
+	got := cmdResultColor("test", SubmitNone, "Accepted (5 ms)\nOutput: [0,1]")
+	if got != colorGreen {
+		t.Error("accepted test should be green")
+	}
+}
+
+func TestCmdResultColor_TestWrong(t *testing.T) {
+	got := cmdResultColor("test", SubmitNone, "Wrong Answer\nOutput: [1,0]")
+	if got != colorRed {
+		t.Error("wrong answer test should be red")
+	}
+}
+
+func TestCmdResultColor_CompileError(t *testing.T) {
+	got := cmdResultColor("test", SubmitNone, "Compile Error:\nLine 1: undefined: foo")
+	if got != colorRed {
+		t.Error("compile error should be red")
+	}
+}
+
+func TestCmdResultColor_RuntimeError(t *testing.T) {
+	got := cmdResultColor("test", SubmitNone, "Runtime Error:\nindex out of range")
+	if got != colorRed {
+		t.Error("runtime error should be red")
+	}
+}
+
+func TestCmdResultColor_SubmitAccepted_WithErrorInOutput(t *testing.T) {
+	// Regression: an Accepted submit where output text contains "error" (e.g. in
+	// problem description) should still be green because the structured enum wins.
+	got := cmdResultColor("submit", SubmitAccepted, "Accepted\nRuntime: 3 ms\nNote: no error")
+	if got != colorGreen {
+		t.Error("accepted submit should be green even if output contains 'error'")
+	}
+}
+
 func TestFindEditor(t *testing.T) {
 	original := os.Getenv("EDITOR")
 	defer os.Setenv("EDITOR", original)

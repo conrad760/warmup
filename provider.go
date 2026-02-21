@@ -3,11 +3,13 @@ package main
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 // ProblemData is the normalized problem representation returned by any provider.
 type ProblemData struct {
 	ID          string    // provider-specific identifier (e.g. "two-sum" for LeetCode)
+	QuestionID  string    // numeric/internal ID needed for test/submit APIs (e.g. "1" for two-sum)
 	Title       string    // human-readable title
 	Description string    // cleaned plain text, not HTML
 	Examples    string    // first example, plain text
@@ -87,6 +89,13 @@ type Submitter interface {
 
 	// CheckSubmission polls for the result of a submission.
 	CheckSubmission(subID string) (*SubmitResult, bool, error) // result, done, error
+}
+
+// PollConfig is optionally implemented by providers to control polling timing.
+// If not implemented, polling uses default values (1s interval, 30s timeout).
+type PollConfig interface {
+	PollInterval() time.Duration
+	PollTimeout() time.Duration
 }
 
 // Authenticator is implemented by providers that require credentials for some operations.

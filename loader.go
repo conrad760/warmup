@@ -10,7 +10,8 @@ import (
 // loadQuestions loads questions from the curated bank using the provider system.
 // It groups questions by provider, fetches problem data (via cache), and merges
 // with the curated approach options and solutions.
-func loadQuestionsFromProviders(curated []CuratedQuestion, cache *QuestionCache, lang string) ([]Question, error) {
+// Returns both the questions and the initialized provider instances (for test/submit).
+func loadQuestionsFromProviders(curated []CuratedQuestion, cache *QuestionCache, lang string) ([]Question, map[string]Provider, error) {
 	// Group curated questions by provider.
 	byProvider := make(map[string][]CuratedQuestion)
 	for _, cq := range curated {
@@ -26,7 +27,7 @@ func loadQuestionsFromProviders(curated []CuratedQuestion, cache *QuestionCache,
 	for pName := range byProvider {
 		p, err := GetProvider(pName)
 		if err != nil {
-			return nil, fmt.Errorf("provider %q: %w", pName, err)
+			return nil, nil, fmt.Errorf("provider %q: %w", pName, err)
 		}
 		providerInstances[pName] = p
 	}
@@ -65,6 +66,7 @@ func loadQuestionsFromProviders(curated []CuratedQuestion, cache *QuestionCache,
 				Solution:    cq.Solution,
 				Provider:    pName,
 				ProblemID:   cq.ProblemID,
+				QuestionID:  problem.QuestionID,
 				CodeSnippet: problem.CodeSnippet,
 				TestInput:   problem.TestInput,
 				Meta:        problem.Meta,
@@ -79,32 +81,32 @@ func loadQuestionsFromProviders(curated []CuratedQuestion, cache *QuestionCache,
 	}
 
 	if len(questions) == 0 {
-		return nil, fmt.Errorf("no questions could be loaded from any provider")
+		return nil, nil, fmt.Errorf("no questions could be loaded from any provider")
 	}
 
-	return questions, nil
+	return questions, providerInstances, nil
 }
 
 // loadQuestionsFromJSON loads additional curated questions from a JSON file,
 // then fetches their problem data via providers.
-func loadQuestionsFromJSONFile(jsonPath string, cache *QuestionCache, lang string) ([]Question, error) {
+func loadQuestionsFromJSONFile(jsonPath string, cache *QuestionCache, lang string) ([]Question, map[string]Provider, error) {
 	data, err := os.ReadFile(jsonPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
+		return nil, nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
 	var curated []CuratedQuestion
 	if err := json.Unmarshal(data, &curated); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
 	// Validate.
 	for i, cq := range curated {
 		if cq.ProblemID == "" {
-			return nil, fmt.Errorf("question %d: missing ProblemID", i)
+			return nil, nil, fmt.Errorf("question %d: missing ProblemID", i)
 		}
 		if len(cq.Options) < 2 {
-			return nil, fmt.Errorf("question %d (%s): needs at least 2 options", i, cq.ProblemID)
+			return nil, nil, fmt.Errorf("question %d (%s): needs at least 2 options", i, cq.ProblemID)
 		}
 		hasOptimal := false
 		for _, opt := range cq.Options {
@@ -114,7 +116,7 @@ func loadQuestionsFromJSONFile(jsonPath string, cache *QuestionCache, lang strin
 			}
 		}
 		if !hasOptimal {
-			return nil, fmt.Errorf("question %d (%s): needs at least one OPTIMAL option", i, cq.ProblemID)
+			return nil, nil, fmt.Errorf("question %d (%s): needs at least one OPTIMAL option", i, cq.ProblemID)
 		}
 	}
 

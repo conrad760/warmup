@@ -1,0 +1,7 @@
+use flake
+
+export WARMUP_EDITOR="nvim {{.CodeFile}} -c 'split {{.DescriptionFile}}' -c 'vsplit {{.TestCasesFile}}'"
+
+# Optional: LeetCode credentials for test/submit (see README)
+# export LEETCODE_SESSION="<your session cookie>"
+# export LEETCODE_CSRFTOKEN="<your csrf token>"
