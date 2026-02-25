@@ -9,9 +9,11 @@ import (
 // ProblemData is the normalized problem representation returned by any provider.
 type ProblemData struct {
 	ID          string    // provider-specific identifier (e.g. "two-sum" for LeetCode)
+	FrontendID  string    // display number (e.g. "1" for two-sum, "33" for search-in-rotated-sorted-array)
 	QuestionID  string    // numeric/internal ID needed for test/submit APIs (e.g. "1" for two-sum)
 	Title       string    // human-readable title
 	Description string    // cleaned plain text, not HTML
+	Constraints string    // constraint text (e.g. "1 <= nums.length <= 10^4")
 	Examples    string    // first example, plain text
 	Difficulty  string    // "Easy", "Medium", "Hard" — normalized by provider
 	Tags        []string  // topic/category tags

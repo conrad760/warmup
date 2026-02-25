@@ -55,7 +55,7 @@ Output: [0,1]
 <p><strong>Constraints:</strong></p>
 <ul><li>2 &lt;= nums.length</li></ul>`
 
-	desc, example := lcParseContent(html)
+	desc, example, constraints := lcParseContent(html)
 
 	if !strings.Contains(desc, "array of integers") {
 		t.Errorf("description should contain problem text, got: %s", desc)
@@ -66,6 +66,10 @@ Output: [0,1]
 	// Constraints should be stripped from description.
 	if strings.Contains(strings.ToLower(desc), "constraint") {
 		t.Errorf("description should not contain constraints, got: %s", desc)
+	}
+	// Constraints should be extracted.
+	if !strings.Contains(constraints, "nums.length") {
+		t.Errorf("constraints should contain constraint text, got: %s", constraints)
 	}
 	// Example is in the second split part — may or may not be populated
 	// depending on how the <strong>Example tags are structured.
@@ -83,13 +87,19 @@ Output: 9</pre>
 <p><strong>Constraints:</strong></p>
 <ul><li>-100 &lt;= x &lt;= 100</li></ul>`
 
-	desc, example := lcParseContent(html)
+	desc, example, _ := lcParseContent(html)
 
 	if !strings.Contains(desc, "Description text here") {
 		t.Errorf("description missing main text, got: %s", desc)
 	}
 	if example == "" {
 		t.Error("example should not be empty when Example section exists")
+	}
+	if !strings.Contains(example, "x = 5") {
+		t.Errorf("example should contain first example, got: %s", example)
+	}
+	if !strings.Contains(example, "x = -3") {
+		t.Errorf("example should contain second example, got: %s", example)
 	}
 	if strings.Contains(example, "Constraint") {
 		t.Error("example should not include constraints section")
@@ -107,7 +117,7 @@ func TestLcHTMLToText_SuperscriptConversion(t *testing.T) {
 	html := `<p>2<sup>31</sup> - 1</p>`
 	// Superscripts are converted in lcParseContent (before lcHTMLToText),
 	// so test via lcParseContent.
-	desc, _ := lcParseContent(html)
+	desc, _, _ := lcParseContent(html)
 	if !strings.Contains(desc, "^31") {
 		t.Errorf("superscripts should be converted to ^N, got: %s", desc)
 	}

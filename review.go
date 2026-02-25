@@ -40,6 +40,135 @@ const (
 	SubmitNone     = 3 // user didn't submit
 )
 
+// DeferredOption stores one approach option with its rating.
+type DeferredOption struct {
+	Text     string
+	Rating   string
+	Selected bool
+}
+
+// DeferredQuestion stores full context for a question flagged for review.
+type DeferredQuestion struct {
+	ProblemID   string
+	FrontendID  string
+	Title       string
+	Category    string
+	Difficulty  string
+	Description string
+	Constraints string
+	Example     string
+	TestInput   string
+	Solution    string
+	Options     []DeferredOption
+	DeferredAt  time.Time
+	UserCode    string
+}
+
+// saveDeferredQuestion appends a markdown entry to ~/.config/warmup/deferred.md.
+func saveDeferredQuestion(dq *DeferredQuestion) error {
+	homeDir, _ := os.UserHomeDir()
+	dir := filepath.Join(homeDir, ".config", "warmup")
+	path := filepath.Join(dir, "deferred.md")
+
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	var b strings.Builder
+
+	// Header: # [33. Search in Rotated Sorted Array][link] (Medium)
+	displayNum := dq.FrontendID
+	if displayNum == "" {
+		displayNum = dq.ProblemID
+	}
+	link := fmt.Sprintf("https://leetcode.com/problems/%s/", dq.ProblemID)
+	b.WriteString(fmt.Sprintf("# [%s. %s](%s) (%s)\n\n", displayNum, dq.Title, link, dq.Difficulty))
+
+	b.WriteString(fmt.Sprintf("**Category:** %s\n", dq.Category))
+	b.WriteString(fmt.Sprintf("**Deferred:** %s\n\n", dq.DeferredAt.Format("2006-01-02 15:04")))
+
+	// Description
+	b.WriteString("## Description\n\n")
+	b.WriteString(dq.Description + "\n\n")
+
+	// Examples — each separated by blank line in the source
+	if dq.Example != "" {
+		examples := strings.Split(dq.Example, "\n\n")
+		for i, ex := range examples {
+			ex = strings.TrimSpace(ex)
+			if ex == "" {
+				continue
+			}
+			b.WriteString(fmt.Sprintf("### Example %d\n\n", i+1))
+			// Format each Input:/Output:/Explanation: on its own line
+			for _, line := range strings.Split(ex, "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				b.WriteString(line + "\n")
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	// Test cases — raw input/output for copy-paste
+	if dq.TestInput != "" {
+		b.WriteString("### Test Cases\n\n")
+		b.WriteString("```\n")
+		b.WriteString("input:\n")
+		b.WriteString(strings.TrimSpace(dq.TestInput) + "\n")
+		b.WriteString("output:\n")
+		b.WriteString("```\n\n")
+	}
+
+	// Constraints
+	if dq.Constraints != "" {
+		b.WriteString("## Constraints\n\n")
+		for _, line := range strings.Split(dq.Constraints, "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				b.WriteString("- " + line + "\n")
+			}
+		}
+		b.WriteString("\n")
+	}
+
+	// Approaches
+	b.WriteString("## Approaches\n\n")
+	for _, opt := range dq.Options {
+		marker := "- "
+		if opt.Selected {
+			marker = "- **[SELECTED]** "
+		}
+		b.WriteString(fmt.Sprintf("%s`%s` %s\n", marker, opt.Rating, opt.Text))
+	}
+	b.WriteString("\n")
+
+	// Solution
+	if dq.Solution != "" {
+		b.WriteString("## Solution\n\n")
+		b.WriteString("```go\n" + dq.Solution + "\n```\n\n")
+	}
+
+	// User code
+	if dq.UserCode != "" {
+		b.WriteString("## My Code\n\n")
+		b.WriteString("```go\n" + dq.UserCode + "\n```\n\n")
+	}
+
+	b.WriteString("---\n\n")
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_, err = f.WriteString(b.String())
+	return err
+}
+
 // computeQuality derives a 0-5 SM-2 quality score from approach rating and submit result.
 //
 //	Optimal + Accepted = 5

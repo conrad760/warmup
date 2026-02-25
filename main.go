@@ -115,11 +115,13 @@ type Question struct {
 	Difficulty  Difficulty
 	Category    string
 	Description string
+	Constraints string
 	Example     string
 	Options     []Option
 	Solution    string
 	Provider    string    // which provider this came from ("leetcode", "mock", etc.)
 	ProblemID   string    // provider-specific identifier (replaces LeetcodeSlug)
+	FrontendID  string    // display number (e.g. "33" for search-in-rotated-sorted-array)
 	QuestionID  string    // numeric/internal ID for test/submit APIs
 	CodeSnippet string    // language-specific function template for scaffolding
 	TestInput   string    // default test case input from provider
@@ -183,6 +185,8 @@ type model struct {
 	sessionReport  string // filled on quit, rendered after program exits
 	statusMessage  string // transient message shown when user tries unavailable action
 	categoryFilter string // active category filter (empty = all categories)
+	confirmQuit    bool   // whether quit confirmation is pending
+	deferred       bool   // whether current question was just deferred
 }
 
 const defaultTimer = 300
@@ -298,7 +302,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
 			if m.revealed {
 				m.saveCurrentReview()
 			}
@@ -307,7 +311,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 
+		case "q":
+			if m.confirmQuit {
+				if m.revealed {
+					m.saveCurrentReview()
+				}
+				if m.reviewLog != nil {
+					m.sessionReport = m.reviewLog.SessionReport(m.sessionEntries, len(m.questions))
+				}
+				return m, tea.Quit
+			}
+			m.confirmQuit = true
+			return m, nil
+
+		case "y":
+			if m.confirmQuit {
+				if m.revealed {
+					m.saveCurrentReview()
+				}
+				if m.reviewLog != nil {
+					m.sessionReport = m.reviewLog.SessionReport(m.sessionEntries, len(m.questions))
+				}
+				return m, tea.Quit
+			}
+			return m, nil
+
 		case "up", "k":
+			if m.confirmQuit {
+				m.confirmQuit = false
+			}
 			if m.selected == -1 {
 				if m.cursor > 0 {
 					m.cursor--
@@ -322,6 +354,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "down", "j":
+			if m.confirmQuit {
+				m.confirmQuit = false
+			}
 			if m.selected == -1 {
 				if m.cursor < len(m.shuffledOpts)-1 {
 					m.cursor++
@@ -336,6 +371,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "enter", " ":
+			if m.confirmQuit {
+				m.confirmQuit = false
+			}
 			if m.selected == -1 && len(m.shuffledOpts) > 0 {
 				m.selected = m.cursor
 				m.revealed = true
@@ -357,6 +395,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "s":
+			if m.confirmQuit {
+				m.confirmQuit = false
+			}
 			if m.revealed {
 				m.showSolution = !m.showSolution
 				if !m.showSolution {
@@ -366,6 +407,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "t":
+			if m.confirmQuit {
+				m.confirmQuit = false
+			}
 			if m.canTryIt() && !m.cmdRunning {
 				if !m.triedIt {
 					m.codingElapsed = 0
@@ -379,6 +423,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "T":
+			if m.confirmQuit {
+				m.confirmQuit = false
+			}
 			if m.triedIt && !m.cmdRunning {
 				m.cmdRunning = true
 				m.cmdAction = "test"
@@ -390,6 +437,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "S":
+			if m.confirmQuit {
+				m.confirmQuit = false
+			}
 			if m.triedIt && !m.cmdRunning {
 				m.cmdRunning = true
 				m.cmdAction = "submit"
@@ -401,11 +451,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "n":
+			if m.confirmQuit {
+				m.confirmQuit = false
+			}
 			if m.revealed && !m.cmdRunning {
 				m.saveCurrentReview()
 				m.pickQuestion()
 				m.timerRunning = true
 				m.triedIt = false
+				m.deferred = false
 				m.codingElapsed = 0
 				m.codingTimerOn = false
 				m.cmdOutput = ""
@@ -415,16 +469,72 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "p":
+			if m.confirmQuit {
+				m.confirmQuit = false
+			}
 			if !m.timerExpired && m.selected == -1 {
 				m.timerRunning = !m.timerRunning
 			}
 			return m, nil
 
 		case "r":
+			if m.confirmQuit {
+				m.confirmQuit = false
+			}
 			if m.selected == -1 {
 				m.timer = defaultTimer
 				m.timerExpired = false
 				m.timerRunning = true
+			}
+			return m, nil
+
+		case "D":
+			if m.confirmQuit {
+				m.confirmQuit = false
+			}
+			if m.revealed && m.selected >= 0 && !m.deferred {
+				q := m.questions[m.currentIdx]
+
+				options := make([]DeferredOption, len(m.shuffledOpts))
+				for i, opt := range m.shuffledOpts {
+					options[i] = DeferredOption{
+						Text:     opt.Text,
+						Rating:   opt.Rating.String(),
+						Selected: i == m.selected,
+					}
+				}
+
+				dq := &DeferredQuestion{
+					ProblemID:   q.ProblemID,
+					FrontendID:  q.FrontendID,
+					Title:       q.Title,
+					Category:    q.Category,
+					Difficulty:  q.Difficulty.String(),
+					Description: q.Description,
+					Constraints: q.Constraints,
+					Example:     q.Example,
+					TestInput:   q.TestInput,
+					Solution:    q.Solution,
+					Options:     options,
+					DeferredAt:  time.Now(),
+				}
+
+				if m.triedIt && m.scaffold != nil {
+					provider := q.Provider
+					if provider == "" {
+						provider = DefaultProviderName
+					}
+					if code, err := m.scaffold.ExtractCode(provider, q.ProblemID); err == nil {
+						dq.UserCode = code
+					}
+				}
+
+				if err := saveDeferredQuestion(dq); err != nil {
+					m.statusMessage = fmt.Sprintf("Failed to save: %v", err)
+				} else {
+					m.deferred = true
+					m.statusMessage = "Logged for review in ~/.config/warmup/deferred.md"
+				}
 			}
 			return m, nil
 		}
@@ -520,7 +630,11 @@ func (m model) providerRunCmd(subcmd string) tea.Cmd {
 		p, ok := providers[provider]
 		if !ok {
 			return cmdResultMsg{
-				output: fmt.Sprintf("Provider %q not available.\nTest/submit at:\n  https://leetcode.com/problems/%s/", provider, q.ProblemID),
+				output: fmt.Sprintf(
+					"Provider %q not available.\nTest/submit at:\n  https://leetcode.com/problems/%s/",
+					provider,
+					q.ProblemID,
+				),
 			}
 		}
 
@@ -529,7 +643,11 @@ func (m model) providerRunCmd(subcmd string) tea.Cmd {
 			if !auth.IsAuthenticated() {
 				if err := auth.Authenticate(); err != nil {
 					return cmdResultMsg{
-						output: fmt.Sprintf("Authentication required for %s.\n\n%s", subcmd, auth.AuthHelp()),
+						output: fmt.Sprintf(
+							"Authentication required for %s.\n\n%s",
+							subcmd,
+							auth.AuthHelp(),
+						),
 					}
 				}
 			}
@@ -546,7 +664,11 @@ func (m model) providerRunCmd(subcmd string) tea.Cmd {
 			tester, ok := p.(Tester)
 			if !ok {
 				return cmdResultMsg{
-					output: fmt.Sprintf("Provider %q does not support testing.\nTest at:\n  https://leetcode.com/problems/%s/", provider, q.ProblemID),
+					output: fmt.Sprintf(
+						"Provider %q does not support testing.\nTest at:\n  https://leetcode.com/problems/%s/",
+						provider,
+						q.ProblemID,
+					),
 				}
 			}
 
@@ -557,7 +679,9 @@ func (m model) providerRunCmd(subcmd string) tea.Cmd {
 				input = q.TestInput
 			}
 			if input == "" {
-				return cmdResultMsg{output: "No test input available. Add test cases to testcases.txt."}
+				return cmdResultMsg{
+					output: "No test input available. Add test cases to testcases.txt.",
+				}
 			}
 
 			// Submit test and poll for results.
@@ -577,7 +701,11 @@ func (m model) providerRunCmd(subcmd string) tea.Cmd {
 			submitter, ok := p.(Submitter)
 			if !ok {
 				return cmdResultMsg{
-					output: fmt.Sprintf("Provider %q does not support submit.\nSubmit at:\n  https://leetcode.com/problems/%s/", provider, q.ProblemID),
+					output: fmt.Sprintf(
+						"Provider %q does not support submit.\nSubmit at:\n  https://leetcode.com/problems/%s/",
+						provider,
+						q.ProblemID,
+					),
 				}
 			}
 
@@ -616,7 +744,11 @@ func pollTestResult(t Tester, runID string, interval, timeout time.Duration) (*T
 }
 
 // pollSubmitResult polls a Submitter for submit results with timeout.
-func pollSubmitResult(s Submitter, subID string, interval, timeout time.Duration) (*SubmitResult, error) {
+func pollSubmitResult(
+	s Submitter,
+	subID string,
+	interval, timeout time.Duration,
+) (*SubmitResult, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		time.Sleep(interval)
@@ -875,6 +1007,17 @@ func (m model) View() string {
 		b.WriteString(badges)
 		b.WriteString("\n")
 	}
+
+	if m.deferred {
+		deferBadge := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#ffffff")).
+			Background(colorPurple).
+			Padding(0, 1).
+			Render(" deferred ")
+		b.WriteString(deferBadge)
+		b.WriteString("\n")
+	}
+
 	b.WriteString(titleStyle.Render(q.Title))
 	b.WriteString("\n")
 
@@ -1049,6 +1192,14 @@ func (m model) View() string {
 		b.WriteString("\n")
 	}
 
+	if m.confirmQuit {
+		confirmStyle := lipgloss.NewStyle().
+			Foreground(colorYellow).
+			Bold(true)
+		b.WriteString(confirmStyle.Render("Quit? Press [y] to confirm or any other key to cancel"))
+		b.WriteString("\n")
+	}
+
 	var helpParts []string
 	if m.selected == -1 {
 		helpParts = append(
@@ -1081,7 +1232,7 @@ func (m model) View() string {
 		} else {
 			helpParts = append(helpParts, "[s] Show Solution")
 		}
-		helpParts = append(helpParts, "[j/k] Scroll", "[q] Quit")
+		helpParts = append(helpParts, "[D] Defer", "[j/k] Scroll", "[q] Quit")
 	}
 	b.WriteString(helpStyle.Render(strings.Join(helpParts, "  ")))
 	b.WriteString("\n")
@@ -1454,7 +1605,11 @@ func main() {
 		"Path to JSON file with additional curated questions (ProblemID + approaches)",
 	)
 	showStats := flag.Bool("stats", false, "Show lifetime stats and exit")
-	categoryFilter := flag.String("category", "", "Focus on a specific category (case-insensitive partial match)")
+	categoryFilter := flag.String(
+		"category",
+		"",
+		"Focus on a specific category (case-insensitive partial match)",
+	)
 	listCategories := flag.Bool("categories", false, "List available categories and exit")
 	lang := flag.String("lang", "go", "Programming language for code snippets")
 	flag.Parse()
@@ -1532,7 +1687,11 @@ func main() {
 			}
 		}
 		if len(matched) == 0 {
-			fmt.Fprintf(os.Stderr, "No category matching %q. Available categories:\n", *categoryFilter)
+			fmt.Fprintf(
+				os.Stderr,
+				"No category matching %q. Available categories:\n",
+				*categoryFilter,
+			)
 			for _, name := range categoryNames {
 				fmt.Fprintf(os.Stderr, "  %-30s (%d problems)\n", name, categorySet[name])
 			}

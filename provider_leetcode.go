@@ -145,8 +145,8 @@ func (lc *LeetCodeProvider) FetchProblem(id string, lang string) (*ProblemData, 
 		}
 	}
 
-	// Parse HTML content into plain text description + example.
-	desc, example := lcParseContent(q.Content)
+	// Parse HTML content into plain text description + example + constraints.
+	desc, example, constraints := lcParseContent(q.Content)
 
 	// Extract tag names.
 	tags := make([]string, len(q.TopicTags))
@@ -167,9 +167,11 @@ func (lc *LeetCodeProvider) FetchProblem(id string, lang string) (*ProblemData, 
 
 	return &ProblemData{
 		ID:          q.TitleSlug,
+		FrontendID:  q.QuestionFrontendID,
 		QuestionID:  q.QuestionID,
 		Title:       q.Title,
 		Description: desc,
+		Constraints: constraints,
 		Examples:    example,
 		Difficulty:  q.Difficulty,
 		Tags:        tags,
@@ -292,29 +294,55 @@ func normalizeLangSlug(lang string) string {
 // --- HTML to text conversion ---
 
 var (
-	lcReBlockClose = regexp.MustCompile(`</(p|div|li|pre|h\d)>`)
-	lcReBlockOpen  = regexp.MustCompile(`<(p|div|li|h\d)[^>]*>`)
-	lcRePreOpen    = regexp.MustCompile(`<pre[^>]*>`)
-	lcReTags       = regexp.MustCompile(`<[^>]+>`)
-	lcReSup        = regexp.MustCompile(`<sup>([^<]+)</sup>`)
-	lcReExample    = regexp.MustCompile(`(?i)<strong[^>]*>\s*Example\s*\d*\s*:?\s*</strong>`)
-	lcReNextSect   = regexp.MustCompile(`(?i)<strong[^>]*>\s*(Example|Constraint)`)
+	lcReBlockClose  = regexp.MustCompile(`</(p|div|li|pre|h\d)>`)
+	lcReBlockOpen   = regexp.MustCompile(`<(p|div|li|h\d)[^>]*>`)
+	lcRePreOpen     = regexp.MustCompile(`<pre[^>]*>`)
+	lcReTags        = regexp.MustCompile(`<[^>]+>`)
+	lcReSup         = regexp.MustCompile(`<sup>([^<]+)</sup>`)
+	lcReExample     = regexp.MustCompile(`(?i)<strong[^>]*>\s*Example\s*\d*\s*:?\s*</strong>`)
+	lcReNextSect    = regexp.MustCompile(`(?i)<strong[^>]*>\s*(Example|Constraint)`)
+	lcReConstraints = regexp.MustCompile(`(?i)<strong[^>]*>\s*Constraint`)
 )
 
-func lcParseContent(rawHTML string) (description, example string) {
+func lcParseContent(rawHTML string) (description, example, constraints string) {
 	rawHTML = lcReSup.ReplaceAllString(rawHTML, "^$1")
 
-	parts := lcReExample.Split(rawHTML, 3)
+	parts := lcReExample.Split(rawHTML, -1)
 
 	descHTML := parts[0]
 	description = lcHTMLToText(descHTML)
 
-	if len(parts) >= 2 {
-		exHTML := parts[1]
-		if idx := lcReNextSect.FindStringIndex(exHTML); idx != nil {
+	// Collect all examples (parts[1], parts[2], ...).
+	var examples []string
+	for i := 1; i < len(parts); i++ {
+		exHTML := parts[i]
+		// Trim at the constraints section if it leaks in.
+		if idx := lcReConstraints.FindStringIndex(exHTML); idx != nil {
 			exHTML = exHTML[:idx[0]]
 		}
-		example = lcHTMLToText(exHTML)
+		text := strings.TrimSpace(lcHTMLToText(exHTML))
+		if text != "" {
+			examples = append(examples, text)
+		}
+	}
+	example = strings.Join(examples, "\n\n")
+
+	// Extract constraints from the full HTML before stripping.
+	if loc := lcReConstraints.FindStringIndex(rawHTML); loc != nil {
+		constraintHTML := rawHTML[loc[0]:]
+		// Strip the "Constraints:" heading itself.
+		if idx := lcReNextSect.FindStringIndex(constraintHTML[1:]); idx != nil {
+			// Another section follows — unlikely, but be safe.
+			constraintHTML = constraintHTML[:idx[0]+1]
+		}
+		constraints = lcHTMLToText(constraintHTML)
+		// Remove the "Constraints:" label line.
+		constraints = strings.TrimSpace(constraints)
+		if idx := strings.Index(constraints, "\n"); idx >= 0 {
+			constraints = strings.TrimSpace(constraints[idx+1:])
+		} else {
+			constraints = ""
+		}
 	}
 
 	if idx := strings.Index(strings.ToLower(description), "constraints"); idx > 0 {
@@ -324,7 +352,7 @@ func lcParseContent(rawHTML string) (description, example string) {
 		description = strings.TrimSpace(description[:idx])
 	}
 
-	return description, example
+	return description, example, constraints
 }
 
 func lcHTMLToText(rawHTML string) string {

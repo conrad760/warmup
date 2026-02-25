@@ -244,6 +244,804 @@ func asteroidCollision(asteroids []int) []int {
 }`,
 	},
 
+	{
+		ProblemID: "implement-queue-using-stacks",
+		Category:  "Stack",
+		Options: []Option{
+			{Text: "Use two stacks: push to input stack, on pop/peek move all to output stack only when output is empty — amortized O(1) per operation, O(n) space", Rating: Optimal},
+			{Text: "Move all elements between stacks on every pop/peek — O(n) per pop/peek, O(n) space", Rating: Suboptimal},
+			{Text: "Use a single stack and recursion to reach the bottom element for dequeue — O(n) per pop/peek due to recursion, O(n) space", Rating: Plausible},
+			{Text: "Use a single stack and reverse it on every dequeue — same as moving between two stacks every time — O(n) per pop, O(n) space", Rating: Suboptimal},
+			{Text: "Simply pop from the stack for dequeue — a stack is LIFO not FIFO, this returns the wrong order — O(1) time, O(n) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Two Stacks (Lazy Transfer)
+// Time: amortized O(1) per operation | Space: O(n)
+type MyQueue struct {
+    input  []int
+    output []int
+}
+
+func (q *MyQueue) Push(x int) {
+    q.input = append(q.input, x)
+}
+
+func (q *MyQueue) transfer() {
+    if len(q.output) == 0 {
+        for len(q.input) > 0 {
+            q.output = append(q.output, q.input[len(q.input)-1])
+            q.input = q.input[:len(q.input)-1]
+        }
+    }
+}
+
+func (q *MyQueue) Pop() int {
+    q.transfer()
+    val := q.output[len(q.output)-1]
+    q.output = q.output[:len(q.output)-1]
+    return val
+}
+
+func (q *MyQueue) Peek() int {
+    q.transfer()
+    return q.output[len(q.output)-1]
+}
+
+func (q *MyQueue) Empty() bool {
+    return len(q.input) == 0 && len(q.output) == 0
+}`,
+	},
+	{
+		ProblemID: "implement-stack-using-queues",
+		Category:  "Stack",
+		Options: []Option{
+			{Text: "Use one queue: after each push, rotate the queue so the new element is at the front — O(n) push, O(1) pop/top, O(n) space", Rating: Optimal},
+			{Text: "Use two queues: on pop, move all but the last element to the other queue — O(n) pop, O(1) push, O(n) space", Rating: Plausible},
+			{Text: "Use a single queue and track the last pushed element for top — still need rotation for pop — O(n) pop, O(1) push/top, O(n) space", Rating: Plausible},
+			{Text: "Simply dequeue from the queue for pop — a queue is FIFO not LIFO, this returns the wrong order — O(1) time, O(n) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Single Queue with Rotation
+// Time: O(n) push, O(1) pop/top | Space: O(n)
+type MyStack struct {
+    queue []int
+}
+
+func (s *MyStack) Push(x int) {
+    s.queue = append(s.queue, x)
+    // Rotate so new element is at front
+    for i := 0; i < len(s.queue)-1; i++ {
+        s.queue = append(s.queue, s.queue[0])
+        s.queue = s.queue[1:]
+    }
+}
+
+func (s *MyStack) Pop() int {
+    val := s.queue[0]
+    s.queue = s.queue[1:]
+    return val
+}
+
+func (s *MyStack) Top() int {
+    return s.queue[0]
+}
+
+func (s *MyStack) Empty() bool {
+    return len(s.queue) == 0
+}`,
+	},
+	{
+		ProblemID: "basic-calculator",
+		Category:  "Stack",
+		Options: []Option{
+			{Text: "Use a stack to handle signs/results before parentheses — track current sign and running result, push on '(' and pop/combine on ')' — O(n) time, O(n) space", Rating: Optimal},
+			{Text: "Recursively evaluate: recurse into parenthesized subexpressions — O(n) time, O(depth) space", Rating: Plausible},
+			{Text: "Convert infix to postfix (Reverse Polish Notation) then evaluate — correct but two-pass and more complex — O(n) time, O(n) space", Rating: Plausible},
+			{Text: "Use eval or parse the expression into a tree then evaluate — overkill for +/- only — O(n) time, O(n) space", Rating: Suboptimal},
+			{Text: "Scan left to right applying each operator immediately — fails when parentheses change evaluation order — O(n) time, O(1) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Stack for Sign/Result Before Parentheses
+// Time: O(n) | Space: O(n)
+func calculate(s string) int {
+    stack := []int{}
+    result, num, sign := 0, 0, 1
+    for i := 0; i < len(s); i++ {
+        ch := s[i]
+        if ch >= '0' && ch <= '9' {
+            num = num*10 + int(ch-'0')
+        } else if ch == '+' {
+            result += sign * num
+            num = 0
+            sign = 1
+        } else if ch == '-' {
+            result += sign * num
+            num = 0
+            sign = -1
+        } else if ch == '(' {
+            stack = append(stack, result, sign)
+            result = 0
+            sign = 1
+        } else if ch == ')' {
+            result += sign * num
+            num = 0
+            prevSign := stack[len(stack)-1]
+            prevResult := stack[len(stack)-2]
+            stack = stack[:len(stack)-2]
+            result = prevResult + prevSign*result
+        }
+    }
+    return result + sign*num
+}`,
+	},
+	{
+		ProblemID: "decode-string",
+		Category:  "Stack",
+		Options: []Option{
+			{Text: "Use two stacks (counts and strings): push on '[', pop and repeat on ']' — O(n * maxK) time, O(n * maxK) space where maxK is the max repeat count", Rating: Optimal},
+			{Text: "Recursion treating each '[' as a subproblem — O(n * maxK) time, O(depth) space", Rating: Plausible},
+			{Text: "Use a single stack of mixed types (string or int), build result on ']' — O(n * maxK) time, O(n * maxK) space", Rating: Plausible},
+			{Text: "Use regex to repeatedly find innermost brackets and expand — O(n^2 * maxK) time due to repeated scanning, O(n * maxK) space", Rating: Suboptimal},
+			{Text: "Reverse the string and process — reversing breaks the nesting structure — O(n) time, O(n) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Two Stacks (Count + String)
+// Time: O(n * maxK) | Space: O(n * maxK)
+func decodeString(s string) string {
+    countStack := []int{}
+    strStack := []string{}
+    current := ""
+    k := 0
+    for _, ch := range s {
+        if ch >= '0' && ch <= '9' {
+            k = k*10 + int(ch-'0')
+        } else if ch == '[' {
+            countStack = append(countStack, k)
+            strStack = append(strStack, current)
+            current = ""
+            k = 0
+        } else if ch == ']' {
+            count := countStack[len(countStack)-1]
+            countStack = countStack[:len(countStack)-1]
+            prev := strStack[len(strStack)-1]
+            strStack = strStack[:len(strStack)-1]
+            current = prev + strings.Repeat(current, count)
+        } else {
+            current += string(ch)
+        }
+    }
+    return current
+}`,
+	},
+	{
+		ProblemID: "next-greater-element-i",
+		Category:  "Stack",
+		Options: []Option{
+			{Text: "Use a monotonic decreasing stack on nums2 to precompute next greater element for each value, store in a hash map — O(n + m) time, O(n) space", Rating: Optimal},
+			{Text: "For each element in nums1, find it in nums2 then scan right for the next greater — O(m * n) time, O(1) space", Rating: Suboptimal},
+			{Text: "Precompute next greater for nums2 using brute force (for each element scan right), then look up — O(m^2 + n) time, O(m) space", Rating: Suboptimal},
+			{Text: "Sort nums2 and binary search for the next greater — sorting destroys the positional relationship — O(m log m) time, O(m) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Monotonic Stack + Hash Map
+// Time: O(n + m) | Space: O(n)
+func nextGreaterElement(nums1 []int, nums2 []int) []int {
+    nextGreater := make(map[int]int)
+    stack := []int{}
+    for _, num := range nums2 {
+        for len(stack) > 0 && stack[len(stack)-1] < num {
+            nextGreater[stack[len(stack)-1]] = num
+            stack = stack[:len(stack)-1]
+        }
+        stack = append(stack, num)
+    }
+    result := make([]int, len(nums1))
+    for i, num := range nums1 {
+        if val, ok := nextGreater[num]; ok {
+            result[i] = val
+        } else {
+            result[i] = -1
+        }
+    }
+    return result
+}`,
+	},
+	{
+		ProblemID: "daily-temperatures",
+		Category:  "Stack",
+		Options: []Option{
+			{Text: "Use a monotonic decreasing stack storing indices — pop when current temp is higher, compute the gap — O(n) time, O(n) space", Rating: Optimal},
+			{Text: "For each day, scan forward to find the next warmer day — O(n^2) time, O(1) space", Rating: Suboptimal},
+			{Text: "Work backwards tracking the next occurrence of each temperature 71-100 — O(n * 30) time, O(1) space", Rating: Plausible},
+			{Text: "Sort temperatures and find next higher — sorting destroys positional order needed for day gaps — O(n log n) time, O(n) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Monotonic Decreasing Stack
+// Time: O(n) | Space: O(n)
+func dailyTemperatures(temperatures []int) []int {
+    n := len(temperatures)
+    result := make([]int, n)
+    stack := []int{} // indices
+    for i, temp := range temperatures {
+        for len(stack) > 0 && temperatures[stack[len(stack)-1]] < temp {
+            prevIdx := stack[len(stack)-1]
+            stack = stack[:len(stack)-1]
+            result[prevIdx] = i - prevIdx
+        }
+        stack = append(stack, i)
+    }
+    return result
+}`,
+	},
+	{
+		ProblemID: "largest-rectangle-in-histogram",
+		Category:  "Stack",
+		Options: []Option{
+			{Text: "Monotonic increasing stack of indices: on pop, compute area using the popped height and width between current index and new stack top — O(n) time, O(n) space", Rating: Optimal},
+			{Text: "For each bar, expand left and right to find the largest rectangle using that bar's height — O(n^2) time, O(1) space", Rating: Suboptimal},
+			{Text: "Divide and conquer: find min bar, compute area, recurse on left and right — O(n log n) average, O(n^2) worst, O(n) space", Rating: Plausible},
+			{Text: "Sort bars by height and greedily form rectangles — sorting destroys adjacency needed for valid rectangles — O(n log n) time, O(n) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Monotonic Increasing Stack
+// Time: O(n) | Space: O(n)
+func largestRectangleArea(heights []int) int {
+    stack := []int{} // indices of increasing heights
+    maxArea := 0
+    for i := 0; i <= len(heights); i++ {
+        h := 0
+        if i < len(heights) {
+            h = heights[i]
+        }
+        for len(stack) > 0 && heights[stack[len(stack)-1]] > h {
+            height := heights[stack[len(stack)-1]]
+            stack = stack[:len(stack)-1]
+            width := i
+            if len(stack) > 0 {
+                width = i - stack[len(stack)-1] - 1
+            }
+            area := height * width
+            if area > maxArea {
+                maxArea = area
+            }
+        }
+        stack = append(stack, i)
+    }
+    return maxArea
+}`,
+	},
+	{
+		ProblemID: "trapping-rain-water",
+		Category:  "Stack",
+		Options: []Option{
+			{Text: "Two pointers from both ends: track left max and right max, move the shorter side inward — O(n) time, O(1) space", Rating: Optimal},
+			{Text: "Monotonic stack: pop when current bar is taller than top, compute trapped water layer by layer — O(n) time, O(n) space", Rating: Optimal},
+			{Text: "Precompute prefix max from left and suffix max from right, water at each index = min(leftMax, rightMax) - height — O(n) time, O(n) space", Rating: Plausible},
+			{Text: "For each bar, scan left and right to find the max heights, compute water — O(n^2) time, O(1) space", Rating: Suboptimal},
+			{Text: "Sum the differences between each bar and its neighbors — this computes slopes not trapped water — O(n) time, O(1) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Two Pointers (Optimal) / Monotonic Stack
+// Time: O(n) | Space: O(1)
+func trap(height []int) int {
+    left, right := 0, len(height)-1
+    leftMax, rightMax := 0, 0
+    water := 0
+    for left < right {
+        if height[left] < height[right] {
+            if height[left] > leftMax {
+                leftMax = height[left]
+            } else {
+                water += leftMax - height[left]
+            }
+            left++
+        } else {
+            if height[right] > rightMax {
+                rightMax = height[right]
+            } else {
+                water += rightMax - height[right]
+            }
+            right--
+        }
+    }
+    return water
+}`,
+	},
+	{
+		ProblemID: "simplify-path",
+		Category:  "Stack",
+		Options: []Option{
+			{Text: "Split by '/', use a stack: push directory names, pop on '..', ignore '.' and empty — O(n) time, O(n) space", Rating: Optimal},
+			{Text: "Process character by character building current component, apply stack logic at each '/' — O(n) time, O(n) space", Rating: Plausible},
+			{Text: "Repeatedly apply string replacements for '//', '/./', '/../' patterns — O(n^2) in worst case due to repeated scanning, O(n) space", Rating: Suboptimal},
+			{Text: "Simply remove all dots from the path — dots can be part of valid directory names like '..hidden' — O(n) time, O(n) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Stack with Split
+// Time: O(n) | Space: O(n)
+func simplifyPath(path string) string {
+    parts := strings.Split(path, "/")
+    stack := []string{}
+    for _, part := range parts {
+        switch part {
+        case "", ".":
+            continue
+        case "..":
+            if len(stack) > 0 {
+                stack = stack[:len(stack)-1]
+            }
+        default:
+            stack = append(stack, part)
+        }
+    }
+    return "/" + strings.Join(stack, "/")
+}`,
+	},
+	{
+		ProblemID: "remove-all-adjacent-duplicates-in-string",
+		Category:  "Stack",
+		Options: []Option{
+			{Text: "Use a stack: push characters, pop when top matches current character — O(n) time, O(n) space", Rating: Optimal},
+			{Text: "Use a byte slice as a stack with an index pointer to avoid allocation overhead — O(n) time, O(n) space", Rating: Optimal},
+			{Text: "Repeatedly scan the string removing adjacent duplicates until no more exist — O(n^2) time in worst case, O(n) space", Rating: Suboptimal},
+			{Text: "Use two pointers: a slow writer and a fast reader — O(n) time, O(1) extra space (modifies input, if allowed)", Rating: Plausible},
+			{Text: "Remove all characters that appear more than once — this removes non-adjacent duplicates too — O(n) time, O(n) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Stack
+// Time: O(n) | Space: O(n)
+func removeDuplicates(s string) string {
+    stack := []byte{}
+    for i := 0; i < len(s); i++ {
+        if len(stack) > 0 && stack[len(stack)-1] == s[i] {
+            stack = stack[:len(stack)-1]
+        } else {
+            stack = append(stack, s[i])
+        }
+    }
+    return string(stack)
+}`,
+	},
+	{
+		ProblemID: "online-stock-span",
+		Category:  "Stack",
+		Options: []Option{
+			{Text: "Monotonic decreasing stack of (price, span) pairs: pop and accumulate spans while top price <= current — amortized O(1) per call, O(n) space", Rating: Optimal},
+			{Text: "Store all prices, scan backwards from current day to count the span — O(n) per call, O(n) space", Rating: Suboptimal},
+			{Text: "Use a monotonic stack of indices and compute span as current index minus new stack top — amortized O(1) per call, O(n) space", Rating: Plausible},
+			{Text: "Track only the maximum price seen so far — the span depends on consecutive days not just the global max — O(1) per call, O(1) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Monotonic Decreasing Stack
+// Time: amortized O(1) per call | Space: O(n)
+type StockSpanner struct {
+    stack []stockEntry
+}
+type stockEntry struct {
+    price, span int
+}
+
+func Constructor() StockSpanner {
+    return StockSpanner{}
+}
+
+func (s *StockSpanner) Next(price int) int {
+    span := 1
+    for len(s.stack) > 0 && s.stack[len(s.stack)-1].price <= price {
+        span += s.stack[len(s.stack)-1].span
+        s.stack = s.stack[:len(s.stack)-1]
+    }
+    s.stack = append(s.stack, stockEntry{price, span})
+    return span
+}`,
+	},
+
+	// Queue
+	{
+		ProblemID: "design-circular-queue",
+		Category:  "Queue",
+		Options: []Option{
+			{Text: "Use a fixed-size array with head and tail pointers and a count — O(1) per operation, O(k) space", Rating: Optimal},
+			{Text: "Use a fixed-size array with head pointer and size, compute tail as (head + size - 1) % k — O(1) per operation, O(k) space", Rating: Optimal},
+			{Text: "Use a linked list with head/tail pointers and a count — O(1) per operation, O(k) space — more allocation overhead than array", Rating: Plausible},
+			{Text: "Use a dynamic slice and append/remove — defeats the purpose of a circular queue with fixed capacity — O(n) dequeue, O(k) space", Rating: Suboptimal},
+			{Text: "Use head and tail pointers without a count, distinguish full from empty by wasting one slot — O(1) per operation, O(k) space", Rating: Plausible},
+		},
+		Solution: `// Pattern: Ring Buffer (Fixed Array + Head/Tail/Count)
+// Time: O(1) per operation | Space: O(k)
+type MyCircularQueue struct {
+    data       []int
+    head, tail int
+    count, cap int
+}
+
+func Constructor(k int) MyCircularQueue {
+    return MyCircularQueue{data: make([]int, k), head: 0, tail: -1, count: 0, cap: k}
+}
+
+func (q *MyCircularQueue) EnQueue(value int) bool {
+    if q.IsFull() { return false }
+    q.tail = (q.tail + 1) % q.cap
+    q.data[q.tail] = value
+    q.count++
+    return true
+}
+
+func (q *MyCircularQueue) DeQueue() bool {
+    if q.IsEmpty() { return false }
+    q.head = (q.head + 1) % q.cap
+    q.count--
+    return true
+}
+
+func (q *MyCircularQueue) Front() int {
+    if q.IsEmpty() { return -1 }
+    return q.data[q.head]
+}
+
+func (q *MyCircularQueue) Rear() int {
+    if q.IsEmpty() { return -1 }
+    return q.data[q.tail]
+}
+
+func (q *MyCircularQueue) IsEmpty() bool { return q.count == 0 }
+func (q *MyCircularQueue) IsFull() bool  { return q.count == q.cap }`,
+	},
+	{
+		ProblemID: "number-of-recent-calls",
+		Category:  "Queue",
+		Options: []Option{
+			{Text: "Use a queue: enqueue each timestamp, dequeue all timestamps older than t - 3000 — amortized O(1) per call, O(W) space where W = 3000ms window", Rating: Optimal},
+			{Text: "Use binary search on a sorted list of timestamps to count entries in range — O(log n) per call, O(n) space", Rating: Plausible},
+			{Text: "Store all timestamps and scan the full list each time to count those in range — O(n) per call, O(n) space", Rating: Suboptimal},
+			{Text: "Keep only a counter and increment on each ping — ignores the 3000ms window constraint — O(1) time, O(1) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Queue with Expiry
+// Time: amortized O(1) per call | Space: O(W) where W = window size
+type RecentCounter struct {
+    queue []int
+}
+
+func Constructor() RecentCounter {
+    return RecentCounter{}
+}
+
+func (rc *RecentCounter) Ping(t int) int {
+    rc.queue = append(rc.queue, t)
+    for rc.queue[0] < t-3000 {
+        rc.queue = rc.queue[1:]
+    }
+    return len(rc.queue)
+}`,
+	},
+	{
+		ProblemID: "moving-average-from-data-stream",
+		Category:  "Queue",
+		Options: []Option{
+			{Text: "Use a circular buffer of fixed size and a running sum — O(1) per next call, O(size) space", Rating: Optimal},
+			{Text: "Use a queue and running sum: enqueue new value, dequeue oldest when over capacity — O(1) per next call, O(size) space", Rating: Optimal},
+			{Text: "Store all values and recompute the average over the last 'size' elements each time — O(size) per next call, O(n) space", Rating: Suboptimal},
+			{Text: "Keep only the running sum and divide by size — without the queue, you can't subtract the oldest value when the window slides — O(1) per next, O(1) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Queue + Running Sum
+// Time: O(1) per next | Space: O(size)
+type MovingAverage struct {
+    queue []int
+    size  int
+    sum   int
+}
+
+func Constructor(size int) MovingAverage {
+    return MovingAverage{size: size}
+}
+
+func (ma *MovingAverage) Next(val int) float64 {
+    ma.queue = append(ma.queue, val)
+    ma.sum += val
+    if len(ma.queue) > ma.size {
+        ma.sum -= ma.queue[0]
+        ma.queue = ma.queue[1:]
+    }
+    return float64(ma.sum) / float64(len(ma.queue))
+}`,
+	},
+	{
+		ProblemID: "design-hit-counter",
+		Category:  "Queue",
+		Options: []Option{
+			{Text: "Use a queue of timestamps: on getHits, dequeue entries older than 300 seconds — O(1) amortized hit, O(n) getHits worst case, O(n) space", Rating: Optimal},
+			{Text: "Use a fixed-size circular buffer of 300 buckets with timestamps for staleness detection — O(1) hit, O(300) getHits, O(300) space", Rating: Optimal},
+			{Text: "Store all hits in a sorted list and binary search for the 300s boundary — O(log n) getHits, O(n) space", Rating: Plausible},
+			{Text: "Use a single counter that increments on hit — can't expire old hits, count grows without bound — O(1) hit, O(1) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Fixed Bucket Array (Circular, 300 slots)
+// Time: O(1) hit, O(300) getHits | Space: O(300)
+type HitCounter struct {
+    times [300]int
+    hits  [300]int
+}
+
+func Constructor() HitCounter {
+    return HitCounter{}
+}
+
+func (hc *HitCounter) Hit(timestamp int) {
+    idx := timestamp % 300
+    if hc.times[idx] != timestamp {
+        hc.times[idx] = timestamp
+        hc.hits[idx] = 1
+    } else {
+        hc.hits[idx]++
+    }
+}
+
+func (hc *HitCounter) GetHits(timestamp int) int {
+    total := 0
+    for i := 0; i < 300; i++ {
+        if timestamp-hc.times[i] < 300 {
+            total += hc.hits[i]
+        }
+    }
+    return total
+}`,
+	},
+	{
+		ProblemID: "sliding-window-maximum",
+		Category:  "Queue",
+		Options: []Option{
+			{Text: "Monotonic decreasing deque storing indices: deque front is always the max, remove from back when smaller, remove from front when out of window — O(n) time, O(k) space", Rating: Optimal},
+			{Text: "Use a max-heap with lazy deletion of out-of-window elements — O(n log k) time, O(k) space", Rating: Plausible},
+			{Text: "For each window position, scan all k elements to find the max — O(n * k) time, O(1) space", Rating: Suboptimal},
+			{Text: "Precompute prefix max and suffix max in blocks of k, combine for each window — O(n) time, O(n) space", Rating: Plausible},
+			{Text: "Track only the global max and update as the window slides — the max may leave the window and you can't recover the next max — O(n) time, O(1) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Monotonic Decreasing Deque
+// Time: O(n) | Space: O(k)
+func maxSlidingWindow(nums []int, k int) []int {
+    deque := []int{} // indices, front is always the max
+    result := []int{}
+    for i := 0; i < len(nums); i++ {
+        // Remove indices out of window
+        for len(deque) > 0 && deque[0] < i-k+1 {
+            deque = deque[1:]
+        }
+        // Remove smaller elements from back
+        for len(deque) > 0 && nums[deque[len(deque)-1]] < nums[i] {
+            deque = deque[:len(deque)-1]
+        }
+        deque = append(deque, i)
+        if i >= k-1 {
+            result = append(result, nums[deque[0]])
+        }
+    }
+    return result
+}`,
+	},
+	{
+		ProblemID: "rotting-oranges",
+		Category:  "Queue",
+		Options: []Option{
+			{Text: "Multi-source BFS: enqueue all rotten oranges, BFS level by level counting minutes — O(m*n) time, O(m*n) space", Rating: Optimal},
+			{Text: "Repeatedly scan the grid marking fresh oranges adjacent to rotten ones until no changes occur — O((m*n)^2) time, O(1) space", Rating: Suboptimal},
+			{Text: "DFS from each rotten orange tracking minimum time to reach each fresh orange — O(m*n * number of rotten) time, O(m*n) space", Rating: Plausible},
+			{Text: "Count fresh oranges and rotten oranges, return fresh/rotten ratio — ignores connectivity, some fresh oranges may be unreachable — O(m*n) time, O(1) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Multi-Source BFS
+// Time: O(m * n) | Space: O(m * n)
+func orangesRotting(grid [][]int) int {
+    rows, cols := len(grid), len(grid[0])
+    queue := [][]int{}
+    fresh := 0
+    for r := 0; r < rows; r++ {
+        for c := 0; c < cols; c++ {
+            if grid[r][c] == 2 {
+                queue = append(queue, []int{r, c})
+            } else if grid[r][c] == 1 {
+                fresh++
+            }
+        }
+    }
+    if fresh == 0 { return 0 }
+    dirs := [][2]int{{0, 1}, {0, -1}, {1, 0}, {-1, 0}}
+    minutes := 0
+    for len(queue) > 0 {
+        size := len(queue)
+        for i := 0; i < size; i++ {
+            r, c := queue[i][0], queue[i][1]
+            for _, d := range dirs {
+                nr, nc := r+d[0], c+d[1]
+                if nr >= 0 && nr < rows && nc >= 0 && nc < cols && grid[nr][nc] == 1 {
+                    grid[nr][nc] = 2
+                    fresh--
+                    queue = append(queue, []int{nr, nc})
+                }
+            }
+        }
+        queue = queue[size:]
+        minutes++
+    }
+    if fresh > 0 { return -1 }
+    return minutes - 1
+}`,
+	},
+	{
+		ProblemID: "walls-and-gates",
+		Category:  "Queue",
+		Options: []Option{
+			{Text: "Multi-source BFS from all gates simultaneously — each cell gets the shortest distance naturally — O(m*n) time, O(m*n) space", Rating: Optimal},
+			{Text: "BFS from each gate individually, update minimum distances — O(g * m * n) time where g = number of gates, O(m*n) space", Rating: Suboptimal},
+			{Text: "DFS from each gate with pruning (skip if current distance >= existing) — correct but BFS is more natural for shortest path — O(m*n) time, O(m*n) space", Rating: Plausible},
+			{Text: "For each empty room, BFS to find the nearest gate — O(m*n * m*n) time, O(m*n) space", Rating: Suboptimal},
+			{Text: "Compute Manhattan distance from each room to the nearest gate — ignores walls that block paths — O(m*n*g) time, O(1) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Multi-Source BFS
+// Time: O(m * n) | Space: O(m * n)
+func wallsAndGates(rooms [][]int) {
+    if len(rooms) == 0 { return }
+    rows, cols := len(rooms), len(rooms[0])
+    INF := 2147483647
+    queue := [][]int{}
+    for r := 0; r < rows; r++ {
+        for c := 0; c < cols; c++ {
+            if rooms[r][c] == 0 {
+                queue = append(queue, []int{r, c})
+            }
+        }
+    }
+    dirs := [][2]int{{0, 1}, {0, -1}, {1, 0}, {-1, 0}}
+    for len(queue) > 0 {
+        cell := queue[0]
+        queue = queue[1:]
+        r, c := cell[0], cell[1]
+        for _, d := range dirs {
+            nr, nc := r+d[0], c+d[1]
+            if nr >= 0 && nr < rows && nc >= 0 && nc < cols && rooms[nr][nc] == INF {
+                rooms[nr][nc] = rooms[r][c] + 1
+                queue = append(queue, []int{nr, nc})
+            }
+        }
+    }
+}`,
+	},
+	{
+		ProblemID: "open-the-lock",
+		Category:  "Queue",
+		Options: []Option{
+			{Text: "BFS from '0000' treating each 4-digit state as a node, skip deadends — O(10^4 * 4) time, O(10^4) space", Rating: Optimal},
+			{Text: "Bidirectional BFS from start and target simultaneously, meet in the middle — O(10^4) time, O(10^4) space — faster in practice", Rating: Plausible},
+			{Text: "DFS with memoization exploring all dial combinations — correct but BFS gives shortest path more naturally — O(10^4) time, O(10^4) space", Rating: Plausible},
+			{Text: "Greedy: for each digit, turn it toward the target digit — deadends can block the greedy path — O(4) time, O(1) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: BFS on State Space
+// Time: O(10^4 * 4) | Space: O(10^4)
+func openLock(deadends []string, target string) int {
+    dead := make(map[string]bool)
+    for _, d := range deadends {
+        dead[d] = true
+    }
+    start := "0000"
+    if dead[start] { return -1 }
+    if start == target { return 0 }
+    visited := map[string]bool{start: true}
+    queue := []string{start}
+    moves := 0
+    for len(queue) > 0 {
+        moves++
+        size := len(queue)
+        for i := 0; i < size; i++ {
+            curr := queue[i]
+            for j := 0; j < 4; j++ {
+                for _, delta := range []int{1, -1} {
+                    next := []byte(curr)
+                    next[j] = byte((int(next[j]-'0')+delta+10)%10) + '0'
+                    ns := string(next)
+                    if ns == target { return moves }
+                    if !visited[ns] && !dead[ns] {
+                        visited[ns] = true
+                        queue = append(queue, ns)
+                    }
+                }
+            }
+        }
+        queue = queue[size:]
+    }
+    return -1
+}`,
+	},
+	{
+		ProblemID: "shortest-path-in-binary-matrix",
+		Category:  "Queue",
+		Options: []Option{
+			{Text: "BFS from top-left to bottom-right moving in 8 directions — O(n^2) time, O(n^2) space", Rating: Optimal},
+			{Text: "A* search with Chebyshev distance heuristic — O(n^2) time worst case, often faster in practice, O(n^2) space", Rating: Plausible},
+			{Text: "DFS exploring all paths and tracking the minimum length — O(8^(n^2)) time without pruning, exponential — O(n^2) space", Rating: Suboptimal},
+			{Text: "Check if the diagonal is all zeros and return n — paths don't have to follow the diagonal — O(n) time, O(1) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: BFS Shortest Path (8-directional)
+// Time: O(n^2) | Space: O(n^2)
+func shortestPathBinaryMatrix(grid [][]int) int {
+    n := len(grid)
+    if grid[0][0] == 1 || grid[n-1][n-1] == 1 { return -1 }
+    dirs := [][2]int{{0,1},{0,-1},{1,0},{-1,0},{1,1},{1,-1},{-1,1},{-1,-1}}
+    queue := [][]int{{0, 0}}
+    grid[0][0] = 1 // mark visited
+    dist := 1
+    for len(queue) > 0 {
+        size := len(queue)
+        for i := 0; i < size; i++ {
+            r, c := queue[i][0], queue[i][1]
+            if r == n-1 && c == n-1 { return dist }
+            for _, d := range dirs {
+                nr, nc := r+d[0], c+d[1]
+                if nr >= 0 && nr < n && nc >= 0 && nc < n && grid[nr][nc] == 0 {
+                    grid[nr][nc] = 1
+                    queue = append(queue, []int{nr, nc})
+                }
+            }
+        }
+        queue = queue[size:]
+        dist++
+    }
+    return -1
+}`,
+	},
+	{
+		ProblemID: "dota2-senate",
+		Category:  "Queue",
+		Options: []Option{
+			{Text: "Use two queues (one per faction): each round the senator with the smaller index bans the other, winner re-queues with index + n — O(n) time, O(n) space", Rating: Optimal},
+			{Text: "Simulate rounds with a single queue and ban counters per faction — O(n) per round, multiple rounds possible, O(n) space", Rating: Plausible},
+			{Text: "Brute force: repeatedly scan the string removing banned senators until one faction remains — O(n^2) time, O(n) space", Rating: Suboptimal},
+			{Text: "Count senators per faction and return the majority — ignores the sequential banning order which determines the outcome — O(n) time, O(1) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Two-Queue Greedy Simulation
+// Time: O(n) | Space: O(n)
+func predictPartyVictory(senate string) string {
+    radiant := []int{}
+    dire := []int{}
+    n := len(senate)
+    for i, ch := range senate {
+        if ch == 'R' {
+            radiant = append(radiant, i)
+        } else {
+            dire = append(dire, i)
+        }
+    }
+    for len(radiant) > 0 && len(dire) > 0 {
+        r, d := radiant[0], dire[0]
+        radiant = radiant[1:]
+        dire = dire[1:]
+        if r < d {
+            radiant = append(radiant, r+n)
+        } else {
+            dire = append(dire, d+n)
+        }
+    }
+    if len(radiant) > 0 { return "Radiant" }
+    return "Dire"
+}`,
+	},
+	{
+		ProblemID: "reveal-cards-in-increasing-order",
+		Category:  "Queue",
+		Options: []Option{
+			{Text: "Sort the deck, simulate the reveal process in reverse using a deque: move last to front then place next largest at front — O(n log n) time, O(n) space", Rating: Optimal},
+			{Text: "Sort the deck, simulate the reveal order using an index queue to determine placement — O(n log n) time, O(n) space", Rating: Optimal},
+			{Text: "Try all permutations and check which produces sorted reveal order — O(n!) time, O(n) space", Rating: Suboptimal},
+			{Text: "Simply sort the array — the reveal-and-move-to-bottom process reorders the output, so sorted input doesn't give sorted reveals — O(n log n) time, O(1) space", Rating: Wrong},
+		},
+		Solution: `// Pattern: Index Queue Simulation
+// Time: O(n log n) | Space: O(n)
+func deckRevealedIncreasing(deck []int) []int {
+    sort.Ints(deck)
+    n := len(deck)
+    // Queue of indices representing card positions
+    queue := make([]int, n)
+    for i := range queue { queue[i] = i }
+    result := make([]int, n)
+    for _, card := range deck {
+        // Place the next smallest card at the front index
+        result[queue[0]] = card
+        queue = queue[1:]
+        // Move the next index to the back (simulate "move to bottom")
+        if len(queue) > 0 {
+            queue = append(queue, queue[0])
+            queue = queue[1:]
+        }
+    }
+    return result
+}`,
+	},
+
 	// Binary Search
 	{
 		ProblemID: "koko-eating-bananas",
