@@ -66,7 +66,10 @@ type DeferredQuestion struct {
 
 // saveDeferredQuestion appends a markdown entry to ~/.config/warmup/deferred.md.
 func saveDeferredQuestion(dq *DeferredQuestion) error {
-	homeDir, _ := os.UserHomeDir()
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("get home dir: %w", err)
+	}
 	dir := filepath.Join(homeDir, ".config", "warmup")
 	path := filepath.Join(dir, "deferred.md")
 
@@ -222,7 +225,7 @@ func (pr *ProblemReview) updateSM2(quality int) {
 
 	now := time.Now()
 	pr.LastReviewAt = now
-	pr.NextReviewAt = now.Add(time.Duration(pr.Interval*24) * time.Hour)
+	pr.NextReviewAt = now.Add(time.Duration(pr.Interval * 24 * float64(time.Hour)))
 }
 
 // RecordReview records a single review event for a problem.
@@ -308,9 +311,12 @@ func (rl *ReviewLog) PickNextQuestion(questions []Question, sessionSeen map[int]
 	return candidates[0].idx
 }
 
-func reviewLogPath() string {
-	homeDir, _ := os.UserHomeDir()
-	return filepath.Join(homeDir, ".config", "warmup", "reviews.json")
+func reviewLogPath() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("get home dir: %w", err)
+	}
+	return filepath.Join(homeDir, ".config", "warmup", "reviews.json"), nil
 }
 
 // LoadReviewLog loads the review log from disk, or returns a fresh one.
@@ -320,7 +326,12 @@ func LoadReviewLog() *ReviewLog {
 		StartedAt: time.Now(),
 	}
 
-	data, err := os.ReadFile(reviewLogPath())
+	path, err := reviewLogPath()
+	if err != nil {
+		return rl
+	}
+
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return rl
 	}
@@ -338,7 +349,10 @@ func LoadReviewLog() *ReviewLog {
 
 // Save writes the review log to disk.
 func (rl *ReviewLog) Save() error {
-	path := reviewLogPath()
+	path, err := reviewLogPath()
+	if err != nil {
+		return err
+	}
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -355,7 +369,7 @@ func (rl *ReviewLog) Save() error {
 // ParseSubmitResult extracts the submit verdict from provider output.
 func ParseSubmitResult(output string) int {
 	lower := strings.ToLower(output)
-	if strings.Contains(lower, "accepted") {
+	if strings.HasPrefix(lower, "accepted") {
 		return SubmitAccepted
 	}
 	if strings.Contains(lower, "wrong answer") {

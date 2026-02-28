@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -149,6 +150,8 @@ type cmdResultMsg struct {
 	err    error
 }
 
+type editorDoneMsg struct{ err error }
+
 type model struct {
 	questions      []Question
 	unseen         []int
@@ -254,7 +257,9 @@ func (m *model) saveCurrentReview() {
 		codingTime:   codingTime,
 	})
 
-	_ = m.reviewLog.Save()
+	if err := m.reviewLog.Save(); err != nil {
+		m.statusMessage = fmt.Sprintf("Warning: failed to save review: %v", err)
+	}
 }
 
 func (m model) Init() tea.Cmd {
@@ -269,7 +274,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
-		m.lastMaxScroll = viewMaxScroll
+		m.lastMaxScroll = int(viewMaxScroll.Load())
 		if m.cmdRunning {
 			m.cmdSpinner++
 		}
@@ -284,6 +289,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, tickCmd()
+
+	case editorDoneMsg:
+		if msg.err != nil {
+			m.statusMessage = fmt.Sprintf("Editor error: %v", msg.err)
+		}
+		return m, nil
 
 	case cmdResultMsg:
 		m.cmdRunning = false
@@ -301,6 +312,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// Any key other than q/y/ctrl+c cancels quit confirmation.
+		if m.confirmQuit {
+			key := msg.String()
+			if key != "q" && key != "y" && key != "ctrl+c" {
+				m.confirmQuit = false
+			}
+		}
 		switch msg.String() {
 		case "ctrl+c":
 			if m.revealed {
@@ -337,9 +355,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "up", "k":
-			if m.confirmQuit {
-				m.confirmQuit = false
-			}
 			if m.selected == -1 {
 				if m.cursor > 0 {
 					m.cursor--
@@ -354,9 +369,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "down", "j":
-			if m.confirmQuit {
-				m.confirmQuit = false
-			}
 			if m.selected == -1 {
 				if m.cursor < len(m.shuffledOpts)-1 {
 					m.cursor++
@@ -371,9 +383,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "enter", " ":
-			if m.confirmQuit {
-				m.confirmQuit = false
-			}
 			if m.selected == -1 && len(m.shuffledOpts) > 0 {
 				m.selected = m.cursor
 				m.revealed = true
@@ -395,9 +404,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "s":
-			if m.confirmQuit {
-				m.confirmQuit = false
-			}
 			if m.revealed {
 				m.showSolution = !m.showSolution
 				if !m.showSolution {
@@ -407,9 +413,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "t":
-			if m.confirmQuit {
-				m.confirmQuit = false
-			}
 			if m.canTryIt() && !m.cmdRunning {
 				if !m.triedIt {
 					m.codingElapsed = 0
@@ -423,9 +426,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "T":
-			if m.confirmQuit {
-				m.confirmQuit = false
-			}
 			if m.triedIt && !m.cmdRunning {
 				m.cmdRunning = true
 				m.cmdAction = "test"
@@ -437,9 +437,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "S":
-			if m.confirmQuit {
-				m.confirmQuit = false
-			}
 			if m.triedIt && !m.cmdRunning {
 				m.cmdRunning = true
 				m.cmdAction = "submit"
@@ -451,9 +448,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "n":
-			if m.confirmQuit {
-				m.confirmQuit = false
-			}
 			if m.revealed && !m.cmdRunning {
 				m.saveCurrentReview()
 				m.pickQuestion()
@@ -469,18 +463,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "p":
-			if m.confirmQuit {
-				m.confirmQuit = false
-			}
 			if !m.timerExpired && m.selected == -1 {
 				m.timerRunning = !m.timerRunning
 			}
 			return m, nil
 
 		case "r":
-			if m.confirmQuit {
-				m.confirmQuit = false
-			}
 			if m.selected == -1 {
 				m.timer = defaultTimer
 				m.timerExpired = false
@@ -489,9 +477,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "D":
-			if m.confirmQuit {
-				m.confirmQuit = false
-			}
 			if m.revealed && m.selected >= 0 && !m.deferred {
 				q := m.questions[m.currentIdx]
 
@@ -553,18 +538,6 @@ func (m model) canTryIt() bool {
 	return m.questions[m.currentIdx].ProblemID != ""
 }
 
-// wantsTryIt reports whether the user earned Try It but may lack a workspace.
-func (m model) wantsTryIt() bool {
-	if !m.revealed || m.selected == -1 {
-		return false
-	}
-	rating := m.shuffledOpts[m.selected].Rating
-	if rating != Optimal && rating != Plausible {
-		return false
-	}
-	return m.questions[m.currentIdx].ProblemID != ""
-}
-
 func (m model) problemExists() bool {
 	if m.scaffold == nil {
 		return false
@@ -606,7 +579,7 @@ func (m model) tryItCmd() tea.Cmd {
 	// Open editor.
 	cmd := m.scaffold.OpenInEditor(provider, q.ProblemID)
 	return tea.ExecProcess(cmd, func(err error) tea.Msg {
-		return nil
+		return editorDoneMsg{err: err}
 	})
 }
 
@@ -890,7 +863,9 @@ var (
 
 // viewMaxScroll is set by View() so Update() can clamp scroll offsets.
 // This is needed because View() has a value receiver and can't mutate the model.
-var viewMaxScroll int
+// Uses atomic to avoid a data race between the render goroutine (View) and
+// the main goroutine (Update).
+var viewMaxScroll atomic.Int32
 
 func diffBadge(d Difficulty) string {
 	switch d {
@@ -1246,7 +1221,7 @@ func (m model) View() string {
 	}
 
 	if totalLines <= viewHeight {
-		viewMaxScroll = 0
+		viewMaxScroll.Store(0)
 		padded := make([]string, len(lines))
 		for i, l := range lines {
 			padded[i] = "  " + l
@@ -1255,7 +1230,7 @@ func (m model) View() string {
 	}
 
 	maxOffset := totalLines - viewHeight
-	viewMaxScroll = maxOffset
+	viewMaxScroll.Store(int32(maxOffset))
 	offset := m.scrollOffset
 	if offset > maxOffset {
 		offset = maxOffset
@@ -1612,7 +1587,15 @@ func main() {
 	)
 	listCategories := flag.Bool("categories", false, "List available categories and exit")
 	lang := flag.String("lang", "go", "Programming language for code snippets")
+	dayFilter := flag.Int("day", 0, "Run only problems from curriculum day N (1-18)")
+	listDays := flag.Bool("days", false, "List available curriculum days and exit")
 	flag.Parse()
+
+	// Validate mutual exclusivity of -day and -category.
+	if *dayFilter != 0 && *categoryFilter != "" {
+		fmt.Fprintln(os.Stderr, "Error: -day and -category are mutually exclusive")
+		os.Exit(1)
+	}
 
 	// Initialize the question cache.
 	cache, err := NewQuestionCache("")
@@ -1630,7 +1613,9 @@ func main() {
 
 	// Load curated questions via providers.
 	fmt.Print("Loading questions...")
-	allCurated := append(curatedBank, curatedBankExtended...)
+	allCurated := make([]CuratedQuestion, 0, len(curatedBank)+len(curatedBankExtended))
+	allCurated = append(allCurated, curatedBank...)
+	allCurated = append(allCurated, curatedBankExtended...)
 	questions, providerInstances, err := loadQuestionsFromProviders(allCurated, cache, *lang)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\nError loading questions: %v\n", err)
@@ -1670,6 +1655,46 @@ func main() {
 			fmt.Printf("  %-30s (%d problems)\n", name, categorySet[name])
 		}
 		return
+	}
+
+	if *listDays {
+		fmt.Println("Available curriculum days:")
+		for _, cd := range ListCurriculumDays() {
+			fmt.Printf("  Day %2d: %-35s (%d problems)\n", cd.Day, cd.Topic, len(cd.Problems))
+		}
+		return
+	}
+
+	// Filter by curriculum day if requested.
+	if *dayFilter != 0 {
+		cd, err := CurriculumProblems(*dayFilter)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			fmt.Fprintln(os.Stderr, "\nAvailable curriculum days:")
+			for _, d := range ListCurriculumDays() {
+				fmt.Fprintf(os.Stderr, "  Day %2d: %-35s (%d problems)\n", d.Day, d.Topic, len(d.Problems))
+			}
+			os.Exit(1)
+		}
+		slugSet := make(map[string]bool, len(cd.Problems))
+		for _, slug := range cd.Problems {
+			slugSet[slug] = true
+		}
+		var filtered []Question
+		for _, q := range questions {
+			if slugSet[q.ProblemID] {
+				filtered = append(filtered, q)
+				delete(slugSet, q.ProblemID)
+			}
+		}
+		// Warn about curriculum problems not found in loaded questions.
+		if len(slugSet) > 0 {
+			for slug := range slugSet {
+				fmt.Fprintf(os.Stderr, "Warning: %q not found in curated bank, skipping\n", slug)
+			}
+		}
+		questions = filtered
+		fmt.Printf("Curriculum Day %d (%s): %d problems\n", cd.Day, cd.Topic, len(questions))
 	}
 
 	// Filter by category if requested.
